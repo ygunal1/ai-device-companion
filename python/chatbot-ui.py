@@ -139,11 +139,7 @@ class RenderThread(threading.Thread):
             draw = ImageDraw.Draw(image)
             
             clock_font_size = 24
-            # clock_font = ImageFont.truetype(self.font_path, clock_font_size)
 
-            # current_time = time.strftime("%H:%M:%S")
-            # draw.text((self.whisplay.LCD_WIDTH // 2, self.whisplay.LCD_HEIGHT // 2), current_time, font=clock_font, fill=(255, 255, 255, 255))
-            
             # render header
             self.render_header(image, draw, status, emoji, battery_level, battery_color)
             self.whisplay.draw_image(0, 0, self.whisplay.LCD_WIDTH, header_height, ImageUtils.image_to_rgb565(image, self.whisplay.LCD_WIDTH, header_height))
@@ -408,6 +404,7 @@ def update_display_data(status=None, emoji=None, text=None,
     global current_wifi_signal_level
     global current_music_progress, current_music_duration_ms
     global render_thread
+    global current_image  # needed to clear cache on path change
 
     next_text = text
     if text is not None:
@@ -484,7 +481,12 @@ def update_display_data(status=None, emoji=None, text=None,
     current_text = next_text if text is not None else current_text
     current_battery_level = battery_level if battery_level is not None else current_battery_level
     current_battery_color = battery_color if battery_color is not None else current_battery_color
+
+    # ── Image path update: clear cache when path changes so new image loads ──
+    if image_path is not None and image_path != current_image_path:
+        current_image = None
     current_image_path = image_path if image_path is not None else current_image_path
+
     if music_progress is not None:
         current_music_progress = music_progress if music_progress >= 0 else None
     if music_duration_ms is not None:
@@ -549,7 +551,6 @@ def handle_client(client_socket, addr, whisplay):
                 if not line.strip():
                     continue
                         
-                # print(f"[Socket - {addr}] Received data: {line}")
                 try:
                     content = json.loads(line)
                     transaction_id = content.get("transaction_id", None)
@@ -573,7 +574,6 @@ def handle_client(client_socket, addr, whisplay):
                     music_duration_ms = content.get("music_duration_ms", None)
                     capture_image_path = content.get("capture_image_path", None)
                     trigger_camera_capture = content.get("camera_capture", None)
-                    # boolean to enable camera mode
                     set_camera_mode = content.get("camera_mode", None)
 
                     if rgbled:
@@ -662,7 +662,7 @@ def start_socket_server(render_thread, host='0.0.0.0', port=12345):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((host, port))
-    server_socket.listen(5)  # Allow more connections
+    server_socket.listen(5)
     print(f"[Socket] Listening on {host}:{port} ...")
 
     try:
@@ -703,9 +703,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGQUIT, cleanup_and_exit)
     signal.signal(signal.SIGSTOP, cleanup_and_exit)
     try:
-        # Keep the main thread alive
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         cleanup_and_exit(None, None)
-    

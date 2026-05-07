@@ -6,6 +6,13 @@ import { WebDisplayServer } from "./web-display";
 import { webAudioBridge } from "./web-audio-bridge";
 import dotEnv from "dotenv";
 
+const FACES = {
+  idle:      resolve(__dirname, "../../assets/faces/idle.png"),
+  listening: resolve(__dirname, "../../assets/faces/listening.png"),
+} as const;
+
+type FaceState = keyof typeof FACES;
+
 dotEnv.config();
 
 export interface Status {
@@ -37,7 +44,7 @@ export interface Status {
 export class WhisplayDisplay {
   private currentStatus: Status = {
     status: "starting",
-    emoji: "😊",
+    emoji: "",
     text: "",
     text_input_enabled: false,
     scroll_speed: 3,
@@ -46,7 +53,7 @@ export class WhisplayDisplay {
     RGB: "#00FF30",
     battery_color: "#000000",
     battery_level: undefined,
-    image: "",
+    image: FACES.idle,
     camera_mode: false,
     capture_image_path: "",
     wifi_signal_level: 0,
@@ -57,6 +64,9 @@ export class WhisplayDisplay {
     music_duration_ms: undefined,
   };
 
+  private faceState: FaceState = "idle";
+  private blinkInterval: NodeJS.Timeout | null = null;
+
   private client = null as Socket | null;
   private buttonPressedCallback: () => void = () => {};
   private buttonReleasedCallback: () => void = () => {};
@@ -65,7 +75,7 @@ export class WhisplayDisplay {
   private onCameraCaptureCallback: () => void = () => {};
   private textInputCallback: (text: string) => void = () => {};
   private isReady: Promise<void>;
-  private pythonProcess: any; // Placeholder for Python process if needed
+  private pythonProcess: any;
   private buttonPressTimeArray: number[] = [];
   private buttonReleaseTimeArray: number[] = [];
   private buttonDetectInterval: NodeJS.Timeout | null = null;
@@ -106,13 +116,63 @@ export class WhisplayDisplay {
     } else {
       this.isReady = Promise.resolve();
     }
+
+    // Start idle blinking once the display is ready
+    this.isReady.then(() => this.startIdleBlink());
   }
+
+  // ─── Face management ────────────────────────────────────────────────────────
+
+  setFace(state: FaceState): void {
+    if (this.faceState === state) return;
+    this.faceState = state;
+
+    if (state === "idle") {
+      this.startIdleBlink();
+    } else {
+      this.stopIdleBlink();
+    }
+
+    this.display({ image: FACES[state], emoji: "" });
+  }
+
+  private startIdleBlink(): void {
+    this.stopIdleBlink();
+
+    const blink = () => {
+      if (this.faceState !== "idle") return;
+      // Briefly show open eyes, then close again
+      this.display({ image: FACES.listening });
+      setTimeout(() => {
+        if (this.faceState === "idle") {
+          this.display({ image: FACES.idle });
+        }
+      }, 150);
+    };
+
+    const scheduleNext = () => {
+      const delay = 4000 + Math.random() * 2000; // blink every 4–6 seconds
+      this.blinkInterval = setTimeout(() => {
+        blink();
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
+  }
+
+  private stopIdleBlink(): void {
+    if (this.blinkInterval) {
+      clearTimeout(this.blinkInterval);
+      this.blinkInterval = null;
+    }
+  }
+
+  // ─── Existing methods ────────────────────────────────────────────────────────
 
   startMonitoringDoubleClick(): void {
     if (this.buttonDetectInterval || !this.buttonDoubleClickCallback) return;
-    // check if there are two presses and two releases
     this.buttonDetectInterval = setTimeout(() => {
-      // clean old click arrays >= 1500ms
       const now = Date.now();
       this.buttonPressTimeArray = this.buttonPressTimeArray.filter(
         (time) => now - time <= 1000,
@@ -134,7 +194,6 @@ export class WhisplayDisplay {
         }
       }
 
-      // reset arrays and interval
       this.buttonPressTimeArray = [];
       this.buttonReleaseTimeArray = [];
       this.buttonDetectInterval = null;
@@ -210,7 +269,6 @@ export class WhisplayDisplay {
   async connect(): Promise<void> {
     console.log("Connecting to local display socket...");
     return new Promise<void>((resolve, reject) => {
-      // 销毁原来的this.client
       if (this.client) {
         this.client.destroy();
       }
@@ -254,7 +312,6 @@ export class WhisplayDisplay {
         }
       });
       this.client.on("error", (err: any) => {
-        // 如果是ECONNREFUSED
         if (err.code === "ECONNREFUSED") {
           reject(err);
         }
@@ -294,9 +351,7 @@ export class WhisplayDisplay {
     }
     await this.isReady;
     try {
-      this.client?.write(`${data}\n`, "utf8", () => {
-        // console.log("send", data);
-      });
+      this.client?.write(`${data}\n`, "utf8", () => {});
     } catch (error) {
       console.error("Failed to update display.");
     }
@@ -405,7 +460,7 @@ export class WhisplayDisplay {
     this.currentStatus.image_icon_visible = image_icon_visible;
     this.currentStatus.music_progress = music_progress;
     this.currentStatus.music_duration_ms = music_duration_ms;
-    
+
     const changedValuesObj = Object.fromEntries(changedValues);
     changedValuesObj.brightness = 100;
     const data = JSON.stringify(changedValuesObj);
@@ -416,7 +471,6 @@ export class WhisplayDisplay {
       if (capturePath) {
         const webCamEnabled = parseBoolEnv("WEB_CAMERA_ENABLED", false);
         if (webCamEnabled && webAudioBridge.isCameraAvailable()) {
-          // Request capture from browser camera regardless of physical device state.
           webAudioBridge
             .requestCameraCapture(capturePath)
             .then(() => this.handleCameraCaptureEvent())
@@ -424,11 +478,9 @@ export class WhisplayDisplay {
               console.error("[WebCamera] Capture failed:", e),
             );
         } else if (!this.deviceEnabled) {
-          // No physical hardware and no web camera: use the Pi camera daemon.
           this.sendCameraDaemonCommand("capture", { path: capturePath });
           this.handleCameraCaptureEvent();
         }
-        // When deviceEnabled=true and no web camera: chatbot-ui.py handles the capture.
       }
     }
 
@@ -439,6 +491,7 @@ export class WhisplayDisplay {
   private handleButtonPressedEvent(): void {
     this.buttonDown = true;
     this.buttonPressTimeArray.push(Date.now());
+    this.setFace("listening"); // eyes open — device is listening
     this.startMonitoringDoubleClick();
     if (!this.buttonDetectInterval) {
       console.log("emit pressed");
@@ -449,6 +502,7 @@ export class WhisplayDisplay {
   private handleButtonReleasedEvent(): void {
     this.buttonDown = false;
     this.buttonReleaseTimeArray.push(Date.now());
+    this.setFace("idle"); // eyes closed — back to idle
     if (!this.buttonDetectInterval) {
       console.log("emit released");
       this.buttonReleasedCallback();
@@ -511,7 +565,7 @@ export class WhisplayDisplay {
   }
 }
 
-// Create a singleton instance to maintain backward compatibility
+// Singleton instance
 const displayInstance = new WhisplayDisplay();
 
 export const display = displayInstance.display.bind(displayInstance);
@@ -529,6 +583,8 @@ export const onTextInput =
   displayInstance.onTextInput.bind(displayInstance);
 export const isButtonDown =
   displayInstance.isButtonDown.bind(displayInstance);
+export const setFace =
+  displayInstance.setFace.bind(displayInstance);
 
 function cleanup() {
   console.log("Cleaning up display process before exit...");
@@ -536,7 +592,6 @@ function cleanup() {
   displayInstance.stopWebDisplay();
 }
 
-// kill the Python process on exit signals
 process.on("exit", cleanup);
 ["SIGINT", "SIGTERM"].forEach((signal) => {
   process.on(signal, () => {
