@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    restart: always
+    environment:
+      - API_KEY=${API_KEY}
+      - DB_PATH=/data/logs.db
+    volumes:
+      - db_data:/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
