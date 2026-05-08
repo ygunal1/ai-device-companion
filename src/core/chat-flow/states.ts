@@ -495,7 +495,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now() });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "log" });
         ctx.transitionTo("log_response");
       })
       .catch((err) => {
@@ -596,7 +596,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now() });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
         ctx.transitionTo("log_followup_response");
       })
       .catch((err) => {
