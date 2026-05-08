@@ -176,6 +176,8 @@ class ChatFlow implements ChatFlowContext {
       );
       this.whisplayIMBridge.start();
     }
+
+    this.startEodScheduler();
   }
 
   async recognizeAudio(path: string, isFromAutoListening?: boolean): Promise<string> {
@@ -218,7 +220,9 @@ class ChatFlow implements ChatFlowContext {
   isAnswerFlow = (): boolean => {
     return (
       this.currentFlowName === "answer" ||
-      this.currentFlowName === "external_answer"
+      this.currentFlowName === "external_answer" ||
+      this.currentFlowName === "log_response" ||
+      this.currentFlowName === "eod_prompt"
     );
   };
 
@@ -272,6 +276,32 @@ class ChatFlow implements ChatFlowContext {
       (keyword) => keyword && lower.includes(keyword),
     );
   };
+
+  private startEodScheduler(): void {
+    const eodEnabled = (process.env.EOD_PROMPT_ENABLED || "true").toLowerCase() !== "false";
+    if (!eodEnabled) return;
+
+    const eodTimeStr = process.env.EOD_PROMPT_TIME || "17:00";
+    const parts = eodTimeStr.split(":");
+    const eodHour = parseInt(parts[0] ?? "17", 10);
+    const eodMinute = parseInt(parts[1] ?? "0", 10);
+    let lastEodDate: string | null = null;
+
+    setInterval(() => {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      if (
+        now.getHours() === eodHour &&
+        now.getMinutes() === eodMinute &&
+        lastEodDate !== todayStr &&
+        this.currentFlowName === "sleep"
+      ) {
+        lastEodDate = todayStr;
+        console.log(`[EOD] Triggering end-of-day prompt at ${eodTimeStr}`);
+        this.transitionTo("eod_prompt");
+      }
+    }, 30000);
+  }
 }
 
 export default ChatFlow;

@@ -9,7 +9,10 @@ export type FlowName =
   | "asr"
   | "answer"
   | "image"
-  | "external_answer";
+  | "external_answer"
+  | "log_listening"
+  | "log_response"
+  | "eod_prompt";
 
 export type FlowStateHandler = (ctx: ChatFlowContext) => void;
 

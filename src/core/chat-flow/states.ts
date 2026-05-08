@@ -40,17 +40,41 @@ import {
 import { DEFAULT_EMOJI } from "../../utils";
 import { isMusicPlaying, getCurrentTrackTitle, stopMusicPlayback, startPendingMusicPlayback, onMusicTrackChange, onMusicPlaybackEnd } from "../../device/music-player";
 import { autoSaveExchange } from "../../config/mempalace";
+import { saveLogEntry } from "../log-store";
+
+const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
+const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+
+    onCameraModeExit(null);
+    onButtonDoubleClick(null);
+
     onButtonPressed(() => {
       resetCameraModeControl();
-      // Stop any playing music when waking up
       stopMusicPlayback();
-      ctx.transitionTo("listening");
+      display({ text: "Hold to log...", RGB: "#553300" });
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        ctx.transitionTo("log_listening");
+      }, LONG_PRESS_MS);
     });
-    onButtonReleased(noop);
-    onCameraModeExit(null);
+
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        display({ status: "idle", text: "Hold longer to log...", RGB: "#333333" });
+        setTimeout(() => {
+          if (ctx.currentFlowName === "sleep") {
+            display({ status: "idle", emoji: "😴", RGB: "#000055", text: SLEEP_DISPLAY_TEXT });
+          }
+        }, 2000);
+      }
+    });
+
     onTextInput((text: string) => {
       if (ctx.currentFlowName !== "sleep") return;
       ctx.answerId += 1;
@@ -58,26 +82,13 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       display({ status: "recognizing", text, text_input_enabled: false });
       ctx.transitionTo("answer");
     });
-    if (ctx.enableCamera) {
-      const captureImgPath = `${cameraDir}/capture-${moment().format(
-        "YYYYMMDD-HHmmss",
-      )}.jpg`;
-      onButtonDoubleClick(() => {
-        enterCameraMode(captureImgPath);
-        ctx.transitionTo("camera");
-      });
-    }
+
     display({
       status: "idle",
       emoji: "😴",
       RGB: "#000055",
       rag_icon_visible: false,
-      ...(getCurrentStatus().text.endsWith("Listening...") || !getCurrentStatus().text
-        ? {
-          text: `Long Press the button to say something${ctx.enableCamera ? ",\ndouble click to launch camera" : ""
-            }.`,
-        }
-        : {}),
+      text: SLEEP_DISPLAY_TEXT,
     });
   },
   camera: (ctx: ChatFlowContext) => {
@@ -455,6 +466,95 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       ctx.transitionTo("listening");
     });
     onButtonReleased(noop);
+  },
+  log_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/log-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("sleep");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+    });
+
+    display({
+      status: "logging",
+      emoji: "📝",
+      RGB: "#ff6600",
+      text: "Logging... release when done.",
+      rag_icon_visible: false,
+    });
+
+    result
+      .then(() => {
+        if (ctx.currentFlowName !== "log_listening") return;
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now() });
+        ctx.transitionTo("log_response");
+      })
+      .catch((err) => {
+        console.error("[log_listening] Recording error:", err);
+        ctx.transitionTo("sleep");
+      });
+  },
+  log_response: (ctx: ChatFlowContext) => {
+    const LOG_RESPONSES = ["Got it.", "I can help with that."];
+    const chosen = LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)];
+    const fullText = `${chosen} Does this come up frequently?`;
+
+    display({
+      status: "answering...",
+      emoji: "💬",
+      RGB: "#00c8a3",
+      text: fullText,
+    });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    void ctx.streamExternalReply(fullText);
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "log_response") {
+        ctx.transitionTo("sleep");
+      }
+    });
+  },
+  eod_prompt: (ctx: ChatFlowContext) => {
+    const eodText =
+      "Before you wrap up today, anything you didn't log today that I could've helped with? And for anything you did log, what felt most urgent?";
+
+    display({
+      status: "answering...",
+      emoji: "🌅",
+      RGB: "#ff9900",
+      text: eodText,
+    });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    void ctx.streamExternalReply(eodText);
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "eod_prompt") {
+        ctx.transitionTo("sleep");
+      }
+    });
   },
   external_answer: (ctx: ChatFlowContext) => {
     if (!ctx.pendingExternalReply && !ctx.pendingExternalImageUrl) {
