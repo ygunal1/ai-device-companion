@@ -19,27 +19,40 @@ interface LogEntry {
 const logFile = path.join(logsDir, "log.jsonl");
 const PARTICIPANT_ID = process.env.PARTICIPANT_ID || "";
 const DEVICE_ID = process.env.DEVICE_ID || "";
+const TRANSCRIPT_ENDPOINT = process.env.TRANSCRIPT_ENDPOINT || "";
+const TRANSCRIPT_API_KEY = process.env.TRANSCRIPT_API_KEY || "";
 
 function appendEntry(entry: LogEntry): void {
   fs.appendFileSync(logFile, JSON.stringify(entry) + "\n", "utf-8");
 }
 
-async function sendToEndpoint(entry: LogEntry): Promise<void> {
-  const endpoint = process.env.TRANSCRIPT_ENDPOINT;
-  if (!endpoint) return;
+async function sendToEndpoint(entry: LogEntry, attempt = 1): Promise<void> {
+  if (!TRANSCRIPT_ENDPOINT) return;
+  const maxAttempts = 4;
+  const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30000); // 1s, 2s, 4s, 30s cap
+
   try {
-    const res = await fetch(endpoint, {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (TRANSCRIPT_API_KEY) headers["X-API-Key"] = TRANSCRIPT_API_KEY;
+
+    const res = await fetch(TRANSCRIPT_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(entry),
     });
-    if (!res.ok) {
-      console.error(`[Log] Endpoint returned ${res.status}`);
+
+    if (res.ok) {
+      console.log(`[Log] Sent to endpoint (attempt ${attempt})`);
     } else {
-      console.log(`[Log] Transcript sent to ${endpoint}`);
+      throw new Error(`HTTP ${res.status}`);
     }
   } catch (err) {
-    console.error("[Log] Failed to send transcript to endpoint:", err);
+    console.error(`[Log] Endpoint send failed (attempt ${attempt}):`, err);
+    if (attempt < maxAttempts) {
+      setTimeout(() => sendToEndpoint(entry, attempt + 1), delayMs);
+    } else {
+      console.error("[Log] Giving up after", maxAttempts, "attempts.");
+    }
   }
 }
 
@@ -50,7 +63,6 @@ export function saveLogEntry(params: {
 }): void {
   const { audioPath, timestamp, type = "log" } = params;
 
-  // Transcribe in background — do not block state transitions
   recognizeAudio(audioPath)
     .then((transcript) => {
       const entry: LogEntry = {
@@ -64,7 +76,6 @@ export function saveLogEntry(params: {
       appendEntry(entry);
       console.log(`[Log] ${type} transcript saved: "${transcript}"`);
 
-      // Delete audio file now that we have the transcript
       try {
         fs.unlinkSync(audioPath);
       } catch {
