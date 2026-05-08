@@ -543,7 +543,7 @@ def update_display_data(status=None, emoji=None, text=None,
         current_image_icon_visible = image_icon_visible
     if transaction_id is not None:
         current_transaction_id = transaction_id
-    if status == "answering" and face_state not in ("listening",):
+    if status is not None and status.startswith("answering") and face_state not in ("listening",):
         face_state = "speaking"
     elif status == "idle" and face_state == "speaking":
         face_state = "idle"
