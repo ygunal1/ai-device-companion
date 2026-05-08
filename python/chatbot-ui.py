@@ -25,7 +25,14 @@ from wireguard_icon import WireguardStatusIcon
 scroll_thread = None
 scroll_stop_event = threading.Event()
 
-# Face image filenames rendered in header slot (not full-screen)
+# Face images — driven by Python button state, not Node.js image path
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+FACE_IDLE = os.path.join(_ASSETS_DIR, "idle.png")
+FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening.png")
+face_state = "idle"   # "idle" | "listening"
+_face_rgb565_cache: dict = {}  # path → rgb565 bytes (pre-encoded, keyed by (path, w, h))
+
+# Keep legacy helpers so nothing else breaks
 FACE_FILENAMES = {"idle.png", "listening.png"}
 _face_image_cache = {}
 
@@ -123,8 +130,26 @@ class RenderThread(threading.Thread):
         self.pending_auto_scroll_after_hold = False
         if camera_mode:
             return False  # Skip rendering if in camera mode
+        # Always show face full-screen (idle=closed eyes, listening=open eyes)
+        face_path = FACE_LISTENING if face_state == "listening" else FACE_IDLE
+        cache_key = (face_path, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
+        if cache_key not in _face_rgb565_cache:
+            try:
+                img = Image.open(face_path).convert("RGBA")
+                img = img.resize((self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT), Image.LANCZOS)
+                _face_rgb565_cache[cache_key] = ImageUtils.image_to_rgb565(img, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
+                print(f"[Face] Loaded {face_path}", flush=True)
+            except Exception as e:
+                print(f"[Face] Failed to load {face_path}: {e}", flush=True)
+                _face_rgb565_cache[cache_key] = None
+        rgb565 = _face_rgb565_cache.get(cache_key)
+        if rgb565 is not None:
+            self.whisplay.draw_image(0, 0, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT, rgb565)
+            return False
+
+        # Fallback to normal header+text if face image unavailable
         if current_image_path not in [None, ""]:
-            # Full-screen content image (generated images, camera — not face images)
+            # Full-screen content image
             if current_image is not None:
                 rgb565_data = ImageUtils.image_to_rgb565(current_image, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
                 self.whisplay.draw_image(0, 0, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT, rgb565_data)
@@ -555,16 +580,20 @@ def exit_camera_mode():
         render_thread.request_render()
 
 def on_button_pressed():
-    """Function executed when button is pressed"""
+    global face_state
+    face_state = "listening"
+    if render_thread is not None:
+        render_thread.request_render()
     print("[Server] Button pressed")
-    notification = {"event": "button_pressed"}
-    send_to_all_clients(notification)
+    send_to_all_clients({"event": "button_pressed"})
 
 def on_button_release():
-    """Function executed when button is released"""
+    global face_state
+    face_state = "idle"
+    if render_thread is not None:
+        render_thread.request_render()
     print("[Server] Button released")
-    notification = {"event": "button_released"}
-    send_to_all_clients(notification)
+    send_to_all_clients({"event": "button_released"})
 
 def handle_client(client_socket, addr, whisplay):
     global camera_capture_image_path, camera_mode, camera_thread, render_thread

@@ -12,9 +12,13 @@ interface LogEntry {
   date: string;
   type: "log" | "followup";
   transcript: string;
+  participantId: string;
+  deviceId: string;
 }
 
 const logFile = path.join(logsDir, "log.jsonl");
+const PARTICIPANT_ID = process.env.PARTICIPANT_ID || "";
+const DEVICE_ID = process.env.DEVICE_ID || "";
 
 function appendEntry(entry: LogEntry): void {
   fs.appendFileSync(logFile, JSON.stringify(entry) + "\n", "utf-8");
@@ -54,6 +58,8 @@ export function saveLogEntry(params: {
         date: new Date(timestamp).toISOString(),
         type,
         transcript: transcript || "",
+        participantId: PARTICIPANT_ID,
+        deviceId: DEVICE_ID,
       };
       appendEntry(entry);
       console.log(`[Log] ${type} transcript saved: "${transcript}"`);
@@ -74,6 +80,8 @@ export function saveLogEntry(params: {
         date: new Date(timestamp).toISOString(),
         type,
         transcript: "",
+        participantId: PARTICIPANT_ID,
+        deviceId: DEVICE_ID,
       });
     });
 }
