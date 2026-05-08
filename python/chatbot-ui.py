@@ -29,7 +29,7 @@ scroll_stop_event = threading.Event()
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 FACE_IDLE = os.path.join(_ASSETS_DIR, "idle.png")
 FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening.png")
-face_state = "idle"   # "idle" | "listening"
+face_state = "idle"   # "idle" | "listening" | "speaking"
 _face_rgb565_cache: dict = {}  # path → rgb565 bytes (pre-encoded, keyed by (path, w, h))
 
 # Keep legacy helpers so nothing else breaks
@@ -130,15 +130,24 @@ class RenderThread(threading.Thread):
         self.pending_auto_scroll_after_hold = False
         if camera_mode:
             return False  # Skip rendering if in camera mode
-        # Always show face full-screen (idle=closed eyes, listening=open eyes)
-        face_path = FACE_LISTENING if face_state == "listening" else FACE_IDLE
-        cache_key = (face_path, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
+        # Always show face full-screen (idle=closed eyes, listening/speaking=open eyes)
+        face_path = FACE_LISTENING if face_state in ("listening", "speaking") else FACE_IDLE
+        label_text = {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
+        cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
             try:
                 img = Image.open(face_path).convert("RGBA")
                 img = img.resize((self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT), Image.LANCZOS)
+                draw = ImageDraw.Draw(img)
+                label_font = ImageFont.truetype(self.font_path, 22)
+                bbox = draw.textbbox((0, 0), label_text, font=label_font)
+                text_w = bbox[2] - bbox[0]
+                x = (self.whisplay.LCD_WIDTH - text_w) // 2
+                y = self.whisplay.LCD_HEIGHT - 50
+                draw.text((x + 1, y + 1), label_text, font=label_font, fill=(0, 0, 0, 200))
+                draw.text((x, y), label_text, font=label_font, fill=(255, 255, 255, 220))
                 _face_rgb565_cache[cache_key] = ImageUtils.image_to_rgb565(img, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
-                print(f"[Face] Loaded {face_path}", flush=True)
+                print(f"[Face] Loaded {face_path} [{label_text}]", flush=True)
             except Exception as e:
                 print(f"[Face] Failed to load {face_path}: {e}", flush=True)
                 _face_rgb565_cache[cache_key] = None
@@ -462,6 +471,7 @@ def update_display_data(status=None, emoji=None, text=None,
     global current_music_progress, current_music_duration_ms
     global render_thread
     global current_image  # needed to clear cache on path change
+    global face_state
 
     next_text = text
     if text is not None:
@@ -533,6 +543,10 @@ def update_display_data(status=None, emoji=None, text=None,
         current_image_icon_visible = image_icon_visible
     if transaction_id is not None:
         current_transaction_id = transaction_id
+    if status == "answering" and face_state not in ("listening",):
+        face_state = "speaking"
+    elif status == "idle" and face_state == "speaking":
+        face_state = "idle"
     current_status = status if status is not None else current_status
     current_emoji = emoji if emoji is not None else current_emoji
     current_text = next_text if text is not None else current_text
