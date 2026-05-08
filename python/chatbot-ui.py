@@ -25,6 +25,27 @@ from wireguard_icon import WireguardStatusIcon
 scroll_thread = None
 scroll_stop_event = threading.Event()
 
+# Face image filenames rendered in header slot (not full-screen)
+FACE_FILENAMES = {"idle.png", "listening.png"}
+_face_image_cache = {}
+
+def is_face_image(path):
+    return bool(path) and os.path.basename(path) in FACE_FILENAMES
+
+def _get_face_image(path, size):
+    key = (path, size)
+    if key not in _face_image_cache:
+        try:
+            img = Image.open(path).convert("RGBA")
+            w, h = img.size
+            scale = size / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+            _face_image_cache[key] = img
+        except Exception as e:
+            print(f"[Render] Failed to load face image {path}: {e}")
+            _face_image_cache[key] = None
+    return _face_image_cache.get(key)
+
 status_font_size=20
 emoji_font_size=40
 battery_font_size=13
@@ -102,8 +123,8 @@ class RenderThread(threading.Thread):
         self.pending_auto_scroll_after_hold = False
         if camera_mode:
             return False  # Skip rendering if in camera mode
-        if current_image_path not in [None, ""]:
-            # Try to load image from path
+        if current_image_path not in [None, ""] and not is_face_image(current_image_path):
+            # Full-screen content image (generated images, camera — not face images)
             if current_image is not None:
                 rgb565_data = ImageUtils.image_to_rgb565(current_image, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
                 self.whisplay.draw_image(0, 0, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT, rgb565_data)
@@ -313,10 +334,17 @@ class RenderThread(threading.Thread):
         status_w = status_bbox[2] - status_bbox[0]
         TextUtils.draw_mixed_text(draw, image, current_status, status_font, (whisplay.CornerHeight, 0))
 
-        # Draw emoji centered
-        emoji_bbox = emoji_font.getbbox(current_emoji)
-        emoji_w = emoji_bbox[2] - emoji_bbox[0]
-        TextUtils.draw_mixed_text(draw, image, current_emoji, emoji_font, ((image_width - emoji_w) // 2, status_font_size + 8))
+        # Draw eyes or emoji in header slot
+        if not current_emoji and is_face_image(current_image_path):
+            face_size = emoji_font_size + 16  # 56px — larger than emoji text
+            face_img = _get_face_image(current_image_path, face_size)
+            if face_img:
+                fx = (image_width - face_img.width) // 2
+                image.paste(face_img, (fx, status_font_size + 4), face_img)
+        else:
+            emoji_bbox = emoji_font.getbbox(current_emoji)
+            emoji_w = emoji_bbox[2] - emoji_bbox[0]
+            TextUtils.draw_mixed_text(draw, image, current_emoji, emoji_font, ((image_width - emoji_w) // 2, status_font_size + 8))
         
         # Draw battery icon
         status_icon_context = {

@@ -220,9 +220,7 @@ class ChatFlow implements ChatFlowContext {
   isAnswerFlow = (): boolean => {
     return (
       this.currentFlowName === "answer" ||
-      this.currentFlowName === "external_answer" ||
-      this.currentFlowName === "log_response" ||
-      this.currentFlowName === "eod_prompt"
+      this.currentFlowName === "external_answer"
     );
   };
 

@@ -43,10 +43,8 @@ import { autoSaveExchange } from "../../config/mempalace";
 import { saveLogEntry } from "../log-store";
 
 const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
-const POST_LOG_COOLDOWN_MS = parseInt(process.env.POST_LOG_COOLDOWN_MS || "8000");
+const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "30000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
-
-let postLogCooldownUntil = 0;
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -58,10 +56,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonPressed(() => {
       resetCameraModeControl();
       stopMusicPlayback();
-      display({ text: "Hold to log...", RGB: "#553300" });
+      display({ text: "Listening...", RGB: "#00aa44" });
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
-        if (Date.now() < postLogCooldownUntil) return;
         ctx.transitionTo("log_listening");
       }, LONG_PRESS_MS);
     });
@@ -70,12 +67,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
-        display({ status: "idle", text: "Hold longer to log...", RGB: "#333333" });
-        setTimeout(() => {
-          if (ctx.currentFlowName === "sleep") {
-            display({ status: "idle", emoji: "😴", RGB: "#000055", text: SLEEP_DISPLAY_TEXT });
-          }
-        }, 2000);
+      }
+      if (ctx.currentFlowName === "sleep") {
+        display({ status: "idle", emoji: "", RGB: "#000055", text: SLEEP_DISPLAY_TEXT });
       }
     });
 
@@ -491,10 +485,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     display({
-      status: "logging",
+      status: "listening",
       emoji: "",
-      RGB: "#ff6600",
-      text: "Logging... release when done.",
+      RGB: "#00ff00",
+      text: "Listening...",
       rag_icon_visible: false,
     });
 
@@ -512,7 +506,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   log_response: (ctx: ChatFlowContext) => {
     const LOG_RESPONSES = ["Got it.", "I can help with that."];
     const chosen = LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)];
-    const fullText = `${chosen} Does this come up frequently?`;
+    const fullText = `${chosen} Does this come up frequently in your workflow? How often would you say?`;
 
     display({
       status: "answering...",
@@ -523,7 +517,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
-      postLogCooldownUntil = Date.now() + POST_LOG_COOLDOWN_MS;
       ctx.transitionTo("sleep");
     });
     onButtonReleased(noop);
@@ -532,7 +525,105 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_response") {
-        postLogCooldownUntil = Date.now() + POST_LOG_COOLDOWN_MS;
+        ctx.transitionTo("log_followup_wait");
+      }
+    });
+  },
+  log_followup_wait: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+
+    onButtonDoubleClick(null);
+
+    display({
+      status: "idle",
+      emoji: "",
+      RGB: "#000033",
+      text: "Hold to answer...",
+      rag_icon_visible: false,
+    });
+
+    onButtonPressed(() => {
+      display({ text: "Listening...", RGB: "#00aa44" });
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        ctx.transitionTo("log_followup_listening");
+      }, LONG_PRESS_MS);
+    });
+
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      if (ctx.currentFlowName === "log_followup_wait") {
+        display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer..." });
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "log_followup_wait") {
+        ctx.transitionTo("sleep");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+  log_followup_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/log-followup-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("log_followup_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+    });
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    result
+      .then(() => {
+        if (ctx.currentFlowName !== "log_followup_listening") return;
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now() });
+        ctx.transitionTo("log_followup_response");
+      })
+      .catch((err) => {
+        console.error("[log_followup_listening] Recording error:", err);
+        ctx.transitionTo("sleep");
+      });
+  },
+  log_followup_response: (ctx: ChatFlowContext) => {
+    const fullText = "I've noted this down, thank you.";
+
+    display({
+      status: "answering...",
+      emoji: "",
+      RGB: "#00c8a3",
+      text: fullText,
+    });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    void ctx.streamExternalReply(fullText);
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "log_followup_response") {
         ctx.transitionTo("sleep");
       }
     });
