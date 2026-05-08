@@ -7,6 +7,7 @@ dotenv.config();
 
 const openAiVoiceModel = process.env.OPENAI_VOICE_MODEL || "tts-1"; // Default to tts-1
 const openAiVoiceType = process.env.OPENAI_VOICE_TYPE || "nova"; // Optional: alloy, echo, fable, onyx, nova, shimmer
+const openAiVoiceSpeed = parseFloat(process.env.OPENAI_VOICE_SPEED || "0.9"); // 0.25–4.0, default slightly slow
 
 const openaiTTS = async (
   text: string
@@ -19,6 +20,7 @@ const openaiTTS = async (
     model: openAiVoiceModel,
     voice: openAiVoiceType,
     input: text,
+    speed: openAiVoiceSpeed,
   }).catch((error) => {
     console.log("OpenAI TTS failed:", error);
     return null;

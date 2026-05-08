@@ -43,7 +43,10 @@ import { autoSaveExchange } from "../../config/mempalace";
 import { saveLogEntry } from "../log-store";
 
 const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
+const POST_LOG_COOLDOWN_MS = parseInt(process.env.POST_LOG_COOLDOWN_MS || "8000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
+
+let postLogCooldownUntil = 0;
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -58,6 +61,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       display({ text: "Hold to log...", RGB: "#553300" });
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
+        if (Date.now() < postLogCooldownUntil) return;
         ctx.transitionTo("log_listening");
       }, LONG_PRESS_MS);
     });
@@ -85,7 +89,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     display({
       status: "idle",
-      emoji: "😴",
+      emoji: "",
       RGB: "#000055",
       rag_icon_visible: false,
       text: SLEEP_DISPLAY_TEXT,
@@ -488,7 +492,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     display({
       status: "logging",
-      emoji: "📝",
+      emoji: "",
       RGB: "#ff6600",
       text: "Logging... release when done.",
       rag_icon_visible: false,
@@ -512,13 +516,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     display({
       status: "answering...",
-      emoji: "💬",
+      emoji: "",
       RGB: "#00c8a3",
       text: fullText,
     });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
+      postLogCooldownUntil = Date.now() + POST_LOG_COOLDOWN_MS;
       ctx.transitionTo("sleep");
     });
     onButtonReleased(noop);
@@ -527,6 +532,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_response") {
+        postLogCooldownUntil = Date.now() + POST_LOG_COOLDOWN_MS;
         ctx.transitionTo("sleep");
       }
     });
@@ -537,7 +543,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     display({
       status: "answering...",
-      emoji: "🌅",
+      emoji: "",
       RGB: "#ff9900",
       text: eodText,
     });
