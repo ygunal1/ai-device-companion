@@ -46,6 +46,10 @@ const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
 const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "30000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
 
+const LOG_RESPONSES = ["Got it.", "I can help with that."];
+const LOG_RESPONSE_SUFFIX = " Does this come up frequently in your workflow? How often would you say?";
+const LOG_FOLLOWUP_RESPONSE = "I've noted this down, thank you.";
+
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
@@ -482,6 +486,12 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      // Pre-start TTS immediately on button release (parallel with recording finalization + ASR)
+      const chosen = LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)];
+      ctx.pendingLogResponseText = chosen + LOG_RESPONSE_SUFFIX;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: ctx.pendingLogResponseText });
+      void ctx.streamExternalReply(ctx.pendingLogResponseText);
     });
 
     display({
@@ -504,16 +514,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_response: (ctx: ChatFlowContext) => {
-    const LOG_RESPONSES = ["Got it.", "I can help with that."];
-    const chosen = LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)];
-    const fullText = `${chosen} Does this come up frequently in your workflow? How often would you say?`;
+    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
+      ? ctx.pendingLogResponseText
+      : LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)] + LOG_RESPONSE_SUFFIX;
 
-    display({
-      status: "answering...",
-      emoji: "",
-      RGB: "#00c8a3",
-      text: fullText,
-    });
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: fullText });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -521,7 +526,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(fullText);
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(fullText);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_response") {
@@ -583,6 +592,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      // Pre-start TTS immediately on button release
+      ctx.pendingLogResponseText = LOG_FOLLOWUP_RESPONSE;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_FOLLOWUP_RESPONSE });
+      void ctx.streamExternalReply(LOG_FOLLOWUP_RESPONSE);
     });
 
     display({
@@ -605,14 +619,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_followup_response: (ctx: ChatFlowContext) => {
-    const fullText = "I've noted this down, thank you.";
-
-    display({
-      status: "answering...",
-      emoji: "",
-      RGB: "#00c8a3",
-      text: fullText,
-    });
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_FOLLOWUP_RESPONSE });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -620,7 +627,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(fullText);
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(LOG_FOLLOWUP_RESPONSE);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_followup_response") {
