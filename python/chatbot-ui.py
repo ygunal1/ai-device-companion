@@ -123,7 +123,7 @@ class RenderThread(threading.Thread):
         self.pending_auto_scroll_after_hold = False
         if camera_mode:
             return False  # Skip rendering if in camera mode
-        if current_image_path not in [None, ""] and not is_face_image(current_image_path):
+        if current_image_path not in [None, ""]:
             # Full-screen content image (generated images, camera — not face images)
             if current_image is not None:
                 rgb565_data = ImageUtils.image_to_rgb565(current_image, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
@@ -400,6 +400,8 @@ class RenderThread(threading.Thread):
             icon.render(draw, icon_x, icon_y)
             cursor_x = icon_x - icon_gap
 
+    BACKLIGHT_KEEPALIVE_SEC = 30  # re-render and refresh backlight at least this often
+
     def run(self):
         frame_interval = 1 / self.fps
         while self.running:
@@ -408,11 +410,13 @@ class RenderThread(threading.Thread):
                 time.sleep(frame_interval)
                 continue
 
-            wait_timeout = None
+            wait_timeout = self.BACKLIGHT_KEEPALIVE_SEC
             if self.pending_auto_scroll_after_hold:
                 wait_timeout = max(0.0, current_scroll_sync_hold_until - time.time())
             self.render_event.wait(wait_timeout)
             self.render_event.clear()
+            # Ensure backlight stays on after idle wait
+            self.whisplay.set_backlight(100)
             
     def stop(self):
         self.running = False
