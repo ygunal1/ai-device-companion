@@ -46,9 +46,9 @@ const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
 const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "30000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
 
-const LOG_RESPONSES = ["Got it.", "I can help with that."];
-const LOG_RESPONSE_SUFFIX = " Does this come up frequently in your workflow? How often would you say?";
-const LOG_FOLLOWUP_RESPONSE = "I've noted this down, thank you.";
+const FOLLOWUP_1 = "On a scale of 1 to 5, how useful would it have been if I had taken care of that for you?";
+const FOLLOWUP_2 = "And is this something you would have acted on anyway, without a tool like this?";
+const LOG_CONFIRMATION = "Got it, I've noted that down.";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -487,11 +487,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       stop();
       // Pre-start TTS immediately on button release (parallel with recording finalization + ASR)
-      const chosen = LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)];
-      ctx.pendingLogResponseText = chosen + LOG_RESPONSE_SUFFIX;
+      ctx.pendingLogResponseText = FOLLOWUP_1;
       ctx.logTTSPreStarted = true;
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: ctx.pendingLogResponseText });
-      void ctx.streamExternalReply(ctx.pendingLogResponseText);
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
+      void ctx.streamExternalReply(FOLLOWUP_1);
     });
 
     display({
@@ -516,7 +515,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   log_response: (ctx: ChatFlowContext) => {
     const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
       ? ctx.pendingLogResponseText
-      : LOG_RESPONSES[Math.floor(Math.random() * LOG_RESPONSES.length)] + LOG_RESPONSE_SUFFIX;
+      : FOLLOWUP_1;
 
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: fullText });
 
@@ -592,11 +591,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      // Pre-start TTS immediately on button release
-      ctx.pendingLogResponseText = LOG_FOLLOWUP_RESPONSE;
+      // Pre-start FOLLOWUP_2 immediately on button release
+      ctx.pendingLogResponseText = FOLLOWUP_2;
       ctx.logTTSPreStarted = true;
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_FOLLOWUP_RESPONSE });
-      void ctx.streamExternalReply(LOG_FOLLOWUP_RESPONSE);
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
+      void ctx.streamExternalReply(FOLLOWUP_2);
     });
 
     display({
@@ -619,7 +618,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_followup_response: (ctx: ChatFlowContext) => {
-    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_FOLLOWUP_RESPONSE });
+    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
+      ? ctx.pendingLogResponseText
+      : FOLLOWUP_2;
+
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: fullText });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -628,13 +631,114 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(noop);
 
     if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(LOG_FOLLOWUP_RESPONSE);
+      void ctx.streamExternalReply(fullText);
     }
     ctx.logTTSPreStarted = false;
     ctx.pendingLogResponseText = "";
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_followup_response") {
+        ctx.transitionTo("log_followup_2_wait");
+      }
+    });
+  },
+  log_followup_2_wait: (ctx: ChatFlowContext) => {
+    let longPressTimer: NodeJS.Timeout | null = null;
+
+    onButtonDoubleClick(null);
+
+    display({
+      status: "idle",
+      emoji: "",
+      RGB: "#000033",
+      text: "Hold to answer...",
+      rag_icon_visible: false,
+    });
+
+    onButtonPressed(() => {
+      display({ text: "Listening...", RGB: "#00aa44" });
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        ctx.transitionTo("log_followup_2_listening");
+      }, LONG_PRESS_MS);
+    });
+
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      if (ctx.currentFlowName === "log_followup_2_wait") {
+        display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer..." });
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "log_followup_2_wait") {
+        ctx.transitionTo("sleep");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+  log_followup_2_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/log-followup2-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("log_followup_2_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      // Pre-start LOG_CONFIRMATION immediately
+      ctx.pendingLogResponseText = LOG_CONFIRMATION;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
+      void ctx.streamExternalReply(LOG_CONFIRMATION);
+    });
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    result
+      .then(() => {
+        if (ctx.currentFlowName !== "log_followup_2_listening") return;
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
+        ctx.transitionTo("log_confirmation");
+      })
+      .catch((err) => {
+        console.error("[log_followup_2_listening] Recording error:", err);
+        ctx.transitionTo("sleep");
+      });
+  },
+  log_confirmation: (ctx: ChatFlowContext) => {
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(LOG_CONFIRMATION);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "log_confirmation") {
         ctx.transitionTo("sleep");
       }
     });
