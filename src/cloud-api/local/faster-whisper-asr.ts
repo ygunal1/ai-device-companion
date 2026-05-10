@@ -56,11 +56,13 @@ export const recognizeAudio = async (
     );
     body.filePath = audioFilePath;
   }
+  const isLocal = ["localhost", "0.0.0.0", "127.0.0.1"].includes(fasterWhisperHost);
+  const url = isLocal
+    ? `http://${fasterWhisperHost}:${fasterWhisperPort}/recognize`
+    : `https://${fasterWhisperHost}/recognize`;
+
   return axios
-    .post<FasterWhisperResponse>(
-      `http://${fasterWhisperHost}:${fasterWhisperPort}/recognize`,
-      body
-    )
+    .post<FasterWhisperResponse>(url, body)
     .then((response) => {
       if (response.data && response.data.recognition) {
         return response.data.recognition;
