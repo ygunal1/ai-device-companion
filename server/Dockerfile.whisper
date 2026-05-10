@@ -1,0 +1,5 @@
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install --no-cache-dir faster-whisper flask
+COPY whisper-host.py .
+CMD ["python3", "whisper-host.py", "--port", "8803"]

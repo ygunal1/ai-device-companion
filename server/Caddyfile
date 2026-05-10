@@ -1,3 +1,8 @@
 aibuddy.ifi.uzh.ch {
-    reverse_proxy app:8000
+    handle /recognize {
+        reverse_proxy whisper:8803
+    }
+    handle {
+        reverse_proxy app:8000
+    }
 }
