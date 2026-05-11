@@ -111,7 +111,7 @@ class ChatFlow implements ChatFlowContext {
       this.wakeWordListener = new WakeWordListener();
       this.wakeWordListener.on("wake", () => {
         if (this.currentFlowName === "sleep") {
-          this.startWakeSession();
+          this.transitionTo("log_listening");
         }
       });
       this.wakeWordListener.start();

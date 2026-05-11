@@ -46,9 +46,9 @@ const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
 const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "30000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
 
-const FOLLOWUP_1 = "On a scale of 1 to 5, how useful would it have been if I had taken care of that for you?";
-const FOLLOWUP_2 = "And is this something you would have acted on anyway, without a tool like this?";
-const LOG_CONFIRMATION = "Got it, I've noted that down.";
+const FOLLOWUP_1 = "On a scale of 1-5, how useful would that be?";
+const FOLLOWUP_2 = "Got it. What would you normally do to take care of this?";
+const LOG_CONFIRMATION = "I've noted this down, thank you!";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
