@@ -491,11 +491,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      // Pre-start TTS immediately on button release (parallel with recording finalization + ASR)
-      ctx.pendingLogResponseText = FOLLOWUP_1;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
-      void ctx.streamExternalReply(FOLLOWUP_1);
     });
 
     display({
@@ -518,11 +514,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_response: (ctx: ChatFlowContext) => {
-    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
-      ? ctx.pendingLogResponseText
-      : FOLLOWUP_1;
-
-    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: fullText });
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -530,11 +522,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(fullText);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(FOLLOWUP_1);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_response") {
@@ -582,11 +570,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      // Pre-start FOLLOWUP_2 immediately on button release
-      ctx.pendingLogResponseText = FOLLOWUP_2;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
-      void ctx.streamExternalReply(FOLLOWUP_2);
     });
 
     display({
@@ -609,11 +593,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_followup_response: (ctx: ChatFlowContext) => {
-    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
-      ? ctx.pendingLogResponseText
-      : FOLLOWUP_2;
-
-    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: fullText });
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -621,11 +601,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(fullText);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(FOLLOWUP_2);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_followup_response") {
@@ -673,11 +649,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      // Pre-start LOG_CONFIRMATION immediately
-      ctx.pendingLogResponseText = LOG_CONFIRMATION;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
-      void ctx.streamExternalReply(LOG_CONFIRMATION);
     });
 
     display({
@@ -708,11 +680,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(LOG_CONFIRMATION);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(LOG_CONFIRMATION);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_confirmation") {
@@ -798,10 +766,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      ctx.pendingLogResponseText = EOD_FOLLOWUP_1;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
-      void ctx.streamExternalReply(EOD_FOLLOWUP_1);
     });
 
     display({
@@ -820,11 +785,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_1: (ctx: ChatFlowContext) => {
-    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
-      ? ctx.pendingLogResponseText
-      : EOD_FOLLOWUP_1;
-
-    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: fullText });
+    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -832,11 +793,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(fullText);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(EOD_FOLLOWUP_1);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "eod_followup_1") {
@@ -897,10 +854,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      ctx.pendingLogResponseText = EOD_FOLLOWUP_2;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
-      void ctx.streamExternalReply(EOD_FOLLOWUP_2);
     });
 
     display({
@@ -919,11 +873,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_2: (ctx: ChatFlowContext) => {
-    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
-      ? ctx.pendingLogResponseText
-      : EOD_FOLLOWUP_2;
-
-    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: fullText });
+    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -931,11 +881,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(fullText);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(EOD_FOLLOWUP_2);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "eod_followup_2") {
@@ -996,10 +942,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      ctx.pendingLogResponseText = EOD_CONFIRMATION;
-      ctx.logTTSPreStarted = true;
       display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
-      void ctx.streamExternalReply(EOD_CONFIRMATION);
     });
 
     display({
@@ -1026,11 +969,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(EOD_CONFIRMATION);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(EOD_CONFIRMATION);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "eod_confirmation") {

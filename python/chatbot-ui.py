@@ -31,8 +31,7 @@ FACE_IDLE = os.path.join(_ASSETS_DIR, "idle.png")
 FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening.png")
 FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering.png")
 face_state = "idle"   # "idle" | "listening" | "speaking"
-_face_rgb565_cache: dict = {}  # keyed by (face_path, label, battery_level, w, h)
-_face_rgba_cache: dict = {}    # keyed by (face_path, w, h) → base PIL Image (no overlays)
+_face_rgb565_cache: dict = {}  # keyed by (face_path, label, w, h)
 
 # Keep legacy helpers so nothing else breaks
 FACE_FILENAMES = {"idle.png", "listening.png", "answering.png"}
@@ -127,53 +126,6 @@ class RenderThread(threading.Thread):
             whisplay.set_backlight(100)
             whisplay.draw_image(0, 0, whisplay.LCD_WIDTH, whisplay.LCD_HEIGHT, rgb565_data)
 
-    def _draw_battery_on_face(self, draw, battery_level, battery_color):
-        """Draw a compact battery icon in the top-right corner of the face image."""
-        W = self.whisplay.LCD_WIDTH
-        bw, bh = 28, 14          # body width/height
-        nub_w, nub_h = 3, 7     # nub dimensions
-        pad = 6                  # padding from screen edges
-        x = W - bw - nub_w - pad
-        y = pad
-
-        fill = battery_color if battery_color and battery_color != (0, 0, 0) else None
-
-        # Semi-transparent dark pill behind the icon for readability
-        bg_margin = 3
-        draw.rounded_rectangle(
-            [x - bg_margin, y - bg_margin,
-             x + bw + nub_w + bg_margin, y + bh + bg_margin],
-            radius=5, fill=(0, 0, 0, 160))
-
-        outline = (255, 255, 255, 220)
-        lw = 2
-        cr = 3
-        # Body outline
-        draw.rounded_rectangle([x, y, x + bw, y + bh], radius=cr, outline=outline, width=lw)
-        # Fill bar proportional to level
-        if fill and battery_level is not None:
-            inner_pad = lw + 1
-            inner_w = max(0, int((bw - inner_pad * 2) * min(battery_level, 100) / 100))
-            if inner_w > 0:
-                draw.rectangle(
-                    [x + inner_pad, y + inner_pad,
-                     x + inner_pad + inner_w, y + bh - inner_pad],
-                    fill=fill)
-        # Nub
-        ny = y + (bh - nub_h) // 2
-        draw.rectangle([x + bw, ny, x + bw + nub_w, ny + nub_h], fill=outline)
-        # Percentage text
-        if battery_level is not None:
-            pct_text = f"{battery_level}%"
-            bbox = self.battery_font.getbbox(pct_text)
-            tw = bbox[2] - bbox[0]
-            th = self.battery_font.getmetrics()[0]
-            tx = x + (bw - tw) // 2
-            ty = y + (bh - th) // 2
-            luminance = ColorUtils.calculate_luminance(fill) if fill else 0
-            tf = (0, 0, 0, 255) if luminance > 128 else (255, 255, 255, 255)
-            draw.text((tx, ty), pct_text, font=self.battery_font, fill=tf)
-
     def render_frame(self, status, emoji, text, scroll_top, battery_level, battery_color):
         global current_scroll_speed, current_image_path, current_image, camera_mode
         self.pending_auto_scroll_after_hold = False
@@ -187,23 +139,12 @@ class RenderThread(threading.Thread):
         else:
             face_path = FACE_IDLE
         label_text = {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
-        cache_key = (face_path, label_text, battery_level, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
+        cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
-            # Get (or load) the base RGBA image for this face
-            base_key = (face_path, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
-            if base_key not in _face_rgba_cache:
-                try:
-                    img = Image.open(face_path).convert("RGBA")
-                    _face_rgba_cache[base_key] = img.resize(
-                        (self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT), Image.LANCZOS)
-                except Exception as e:
-                    print(f"[Face] Failed to load {face_path}: {e}", flush=True)
-                    _face_rgba_cache[base_key] = None
-            base = _face_rgba_cache[base_key]
-            if base is not None:
-                img = base.copy()
+            try:
+                img = Image.open(face_path).convert("RGBA")
+                img = img.resize((self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT), Image.LANCZOS)
                 draw = ImageDraw.Draw(img)
-                # State label at bottom centre
                 label_font = ImageFont.truetype(self.font_path, 22)
                 bbox = draw.textbbox((0, 0), label_text, font=label_font)
                 text_w = bbox[2] - bbox[0]
@@ -211,13 +152,11 @@ class RenderThread(threading.Thread):
                 y = self.whisplay.LCD_HEIGHT - 50
                 draw.text((x + 1, y + 1), label_text, font=label_font, fill=(0, 0, 0, 200))
                 draw.text((x, y), label_text, font=label_font, fill=(255, 255, 255, 220))
-                # Battery overlay — top-right corner
-                if battery_level is not None:
-                    self._draw_battery_on_face(draw, battery_level, battery_color)
                 _face_rgb565_cache[cache_key] = ImageUtils.image_to_rgb565(
                     img, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
-                print(f"[Face] Rendered {face_path} [{label_text}] battery={battery_level}", flush=True)
-            else:
+                print(f"[Face] Rendered {face_path} [{label_text}]", flush=True)
+            except Exception as e:
+                print(f"[Face] Failed to load {face_path}: {e}", flush=True)
                 _face_rgb565_cache[cache_key] = None
         rgb565 = _face_rgb565_cache.get(cache_key)
         if rgb565 is not None:
