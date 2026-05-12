@@ -47,9 +47,14 @@ def init_db():
                 participant_id TEXT,
                 device_id     TEXT,
                 type          TEXT,
-                transcript    TEXT
+                transcript    TEXT,
+                deleted_at    TEXT
             )
         """)
+        # Migration: add deleted_at to existing databases that don't have it
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(logs)").fetchall()]
+        if "deleted_at" not in cols:
+            conn.execute("ALTER TABLE logs ADD COLUMN deleted_at TEXT")
 
 
 class LogEntry(BaseModel):
@@ -90,13 +95,13 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
 def export_csv(_: str = Depends(require_api_key)):
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT id, received_at, date, participant_id, device_id, type, transcript
+            """SELECT id, received_at, date, participant_id, device_id, type, transcript, deleted_at
                FROM logs ORDER BY timestamp ASC"""
         ).fetchall()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "transcript"])
+    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "transcript", "deleted_at"])
     for row in rows:
         writer.writerow(list(row))
 
@@ -121,23 +126,26 @@ def my_data_page():
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My Study Data</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; color: #222; }
+    body { font-family: sans-serif; max-width: 680px; margin: 60px auto; padding: 0 20px; color: #222; }
     h1 { font-size: 1.4rem; }
     input { padding: 8px; font-size: 1rem; width: 200px; border: 1px solid #ccc; border-radius: 4px; }
     button { padding: 8px 16px; font-size: 1rem; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px; }
     #view-btn { background: #0066cc; color: white; }
-    #delete-btn { background: #cc2200; color: white; display: none; }
     #result { margin-top: 24px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
     th { background: #f5f5f5; }
     .empty { color: #888; font-style: italic; }
-    .confirm { background: #fff3cd; padding: 12px; border-radius: 4px; margin-top: 16px; }
+    .del-entry { background: #cc2200; color: white; font-size: 0.8rem; padding: 4px 10px; margin-left: 0; }
+    .del-all { background: #7a0000; color: white; margin-top: 16px; }
+    .notice { background: #fff3cd; padding: 12px; border-radius: 4px; margin-top: 16px; font-size: 0.9rem; }
   </style>
 </head>
 <body>
   <h1>My Study Data</h1>
-  <p>Enter your participant ID to view or delete the entries recorded on your device.</p>
+  <p>Enter your participant ID to view or remove entries recorded on your device.
+     Deleted entries are removed from your view but a copy is kept by the research team
+     as required by the study protocol.</p>
   <div>
     <input id="pid" type="text" placeholder="e.g. P01" />
     <button id="view-btn" onclick="loadData()">View my entries</button>
@@ -152,31 +160,58 @@ def my_data_page():
       if (!currentPid) return;
       const res = await fetch("/my-data/" + encodeURIComponent(currentPid));
       const data = await res.json();
-      const entries = data.entries;
-      const result = document.getElementById("result");
+      render(data.entries);
+    }
 
+    function render(entries) {
+      const result = document.getElementById("result");
       if (entries.length === 0) {
         result.innerHTML = "<p class='empty'>No entries found for participant ID <strong>" + currentPid + "</strong>.</p>";
-        document.getElementById("delete-btn").style.display = "none";
         return;
       }
 
-      let html = "<p>Found <strong>" + entries.length + " entries</strong> for participant <strong>" + currentPid + "</strong>:</p>";
-      html += "<table><tr><th>Date</th><th>Type</th><th>Transcript</th></tr>";
+      let html = "<p>Found <strong>" + entries.length + " entries</strong> for participant <strong>" + currentPid + "</strong>.</p>";
+      html += "<table><tr><th>Date</th><th>Type</th><th>Transcript</th><th></th></tr>";
       for (const e of entries) {
         const d = new Date(e.date).toLocaleString();
-        html += "<tr><td>" + d + "</td><td>" + e.type + "</td><td>" + (e.transcript || "<em>empty</em>") + "</td></tr>";
+        html += "<tr id='row-" + e.id + "'>";
+        html += "<td>" + d + "</td>";
+        html += "<td>" + e.type + "</td>";
+        html += "<td>" + (e.transcript || "<em>empty</em>") + "</td>";
+        html += "<td><button class='del-entry' onclick='deleteEntry(" + e.id + ")'>Delete</button></td>";
+        html += "</tr>";
       }
       html += "</table>";
-      html += "<div class='confirm'><button id='delete-btn' style='display:inline-block' onclick='confirmDelete()'>Request deletion of all my entries</button></div>";
+      html += "<div class='notice'>";
+      html += "Deleting an entry removes it from this view. The research team retains an anonymised copy as required by the study protocol.";
+      html += "<br><br><button class='del-all' onclick='deleteAll()'>Delete all my entries</button>";
+      html += "</div>";
       result.innerHTML = html;
     }
 
-    async function confirmDelete() {
-      if (!confirm("Delete all " + currentPid + "'s entries permanently? This cannot be undone.")) return;
+    async function deleteEntry(id) {
+      if (!confirm("Remove this entry from your record?")) return;
+      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + "/" + id, { method: "DELETE" });
+      if (res.ok) {
+        const row = document.getElementById("row-" + id);
+        if (row) row.remove();
+        const rows = document.querySelectorAll("table tr[id^='row-']");
+        if (rows.length === 0) {
+          document.getElementById("result").innerHTML = "<p class='empty'>All entries removed.</p>";
+        }
+      } else {
+        alert("Could not delete entry. Please try again.");
+      }
+    }
+
+    async function deleteAll() {
+      if (!confirm("Remove all entries for " + currentPid + "? This cannot be undone.")) return;
       const res = await fetch("/my-data/" + encodeURIComponent(currentPid), { method: "DELETE" });
-      const data = await res.json();
-      document.getElementById("result").innerHTML = "<p>All entries for <strong>" + currentPid + "</strong> have been deleted.</p>";
+      if (res.ok) {
+        document.getElementById("result").innerHTML = "<p>All entries for <strong>" + currentPid + "</strong> have been removed from your view.</p>";
+      } else {
+        alert("Could not delete entries. Please try again.");
+      }
     }
   </script>
 </body>
@@ -186,21 +221,40 @@ def my_data_page():
 
 @app.get("/my-data/{participant_id}")
 def get_my_data(participant_id: str):
-    """Return a participant's own entries (no API key required — participants use this)."""
+    """Return a participant's own non-deleted entries."""
     with get_db() as conn:
         rows = conn.execute(
             """SELECT id, date, type, transcript
-               FROM logs WHERE participant_id = ? ORDER BY timestamp ASC""",
+               FROM logs
+               WHERE participant_id = ? AND deleted_at IS NULL
+               ORDER BY timestamp ASC""",
             (participant_id,),
         ).fetchall()
     return {"participant_id": participant_id, "entries": [dict(r) for r in rows]}
 
 
+@app.delete("/my-data/{participant_id}/{entry_id}")
+def delete_my_entry(participant_id: str, entry_id: int):
+    """Soft-delete a single entry. Only works if it belongs to the participant."""
+    with get_db() as conn:
+        result = conn.execute(
+            """UPDATE logs SET deleted_at = ?
+               WHERE id = ? AND participant_id = ? AND deleted_at IS NULL""",
+            (datetime.utcnow().isoformat(), entry_id, participant_id),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Entry not found")
+    return {"status": "deleted", "id": entry_id}
+
+
 @app.delete("/my-data/{participant_id}")
 def delete_my_data(participant_id: str):
-    """Delete all entries for a participant (GDPR right to erasure)."""
+    """Soft-delete all entries for a participant (GDPR right to erasure)."""
     with get_db() as conn:
-        conn.execute("DELETE FROM logs WHERE participant_id = ?", (participant_id,))
+        conn.execute(
+            "UPDATE logs SET deleted_at = ? WHERE participant_id = ? AND deleted_at IS NULL",
+            (datetime.utcnow().isoformat(), participant_id),
+        )
     return {"status": "deleted", "participant_id": participant_id}
 
 
