@@ -8,17 +8,6 @@ services:
     volumes:
       - db_data:/data
 
-  whisper:
-    build:
-      context: .
-      dockerfile: Dockerfile.whisper
-    restart: always
-    environment:
-      - FASTER_WHISPER_MODEL_SIZE_OR_PATH=${WHISPER_MODEL:-tiny}
-      - WHISPER_CPU_THREADS=4
-    volumes:
-      - whisper_cache:/root/.cache
-
   caddy:
     image: caddy:2-alpine
     restart: always
@@ -32,10 +21,8 @@ services:
       - caddy_config:/config
     depends_on:
       - app
-      - whisper
 
 volumes:
   db_data:
   caddy_data:
   caddy_config:
-  whisper_cache:

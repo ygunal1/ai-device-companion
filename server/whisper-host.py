@@ -44,7 +44,12 @@ def recognize():
             audio_path = file_path
 
         t0 = time.perf_counter()
-        segments, info = model.transcribe(audio_path, language=language, vad_filter=True)
+        segments, info = model.transcribe(
+            audio_path,
+            language=language,
+            vad_filter=True,
+            vad_parameters={"threshold": 0.3, "speech_pad_ms": 400},
+        )
         text = "".join(seg.text for seg in segments).strip()
 
         return jsonify({
