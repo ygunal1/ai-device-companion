@@ -338,7 +338,7 @@ const playAudioData = (params: TTSResult): Promise<void> => {
       resolve();
       player.isPlaying = false;
       console.log("Audio playback completed");
-    }, audioDuration); // Add 1 second buffer
+    }, audioDuration + 1000); // +1000ms buffer for audio device latency
 
     if (ttsAudioFormat === "wav") {
       const process = spawn("sox", [

@@ -10,7 +10,7 @@ dotenv.config();
 interface LogEntry {
   timestamp: number;
   date: string;
-  type: "log" | "followup";
+  type: "log" | "followup" | "eod";
   transcript: string;
   participantId: string;
   deviceId: string;
@@ -89,7 +89,7 @@ if (TRANSCRIPT_ENDPOINT) {
 export function saveLogEntry(params: {
   audioPath: string;
   timestamp: number;
-  type?: "log" | "followup";
+  type?: "log" | "followup" | "eod";
 }): void {
   const { audioPath, timestamp, type = "log" } = params;
 
