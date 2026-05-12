@@ -18,7 +18,16 @@ export type FlowName =
   | "log_followup_2_wait"
   | "log_followup_2_listening"
   | "log_confirmation"
-  | "eod_prompt";
+  | "eod_prompt"
+  | "eod_wait"
+  | "eod_listening"
+  | "eod_followup_1"
+  | "eod_followup_wait"
+  | "eod_followup_listening"
+  | "eod_followup_2"
+  | "eod_followup_2_wait"
+  | "eod_followup_2_listening"
+  | "eod_confirmation";
 
 export type FlowStateHandler = (ctx: ChatFlowContext) => void;
 

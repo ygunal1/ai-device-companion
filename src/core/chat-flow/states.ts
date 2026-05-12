@@ -50,6 +50,11 @@ const FOLLOWUP_1 = "On a scale of 1-5, how useful would that be?";
 const FOLLOWUP_2 = "Got it. What would you normally do to take care of this?";
 const LOG_CONFIRMATION = "I've noted this down, thank you!";
 
+const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
+const EOD_FOLLOWUP_1 = "On a scale of 1 to 5, how useful would it have been if I had taken care of that?";
+const EOD_FOLLOWUP_2 = "Did you do anything about this when it came up today?";
+const EOD_CONFIRMATION = "Got it, I've noted that down. Have a good evening.";
+
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
@@ -538,8 +543,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   log_followup_wait: (ctx: ChatFlowContext) => {
-    let longPressTimer: NodeJS.Timeout | null = null;
-
     onButtonDoubleClick(null);
 
     display({
@@ -551,22 +554,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonPressed(() => {
-      display({ text: "Listening...", RGB: "#00aa44" });
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        ctx.transitionTo("log_followup_listening");
-      }, LONG_PRESS_MS);
+      ctx.transitionTo("log_followup_listening");
     });
 
-    onButtonReleased(() => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      if (ctx.currentFlowName === "log_followup_wait") {
-        display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer..." });
-      }
-    });
+    onButtonReleased(noop);
 
     setTimeout(() => {
       if (ctx.currentFlowName === "log_followup_wait") {
@@ -643,8 +634,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   log_followup_2_wait: (ctx: ChatFlowContext) => {
-    let longPressTimer: NodeJS.Timeout | null = null;
-
     onButtonDoubleClick(null);
 
     display({
@@ -656,22 +645,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonPressed(() => {
-      display({ text: "Listening...", RGB: "#00aa44" });
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        ctx.transitionTo("log_followup_2_listening");
-      }, LONG_PRESS_MS);
+      ctx.transitionTo("log_followup_2_listening");
     });
 
-    onButtonReleased(() => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      if (ctx.currentFlowName === "log_followup_2_wait") {
-        display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer..." });
-      }
-    });
+    onButtonReleased(noop);
 
     setTimeout(() => {
       if (ctx.currentFlowName === "log_followup_2_wait") {
@@ -743,15 +720,13 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       }
     });
   },
+  // ── End-of-day interactive flow ──────────────────────────────────────────
   eod_prompt: (ctx: ChatFlowContext) => {
-    const eodText =
-      "Before you wrap up today, anything you didn't log today that I could've helped with? And for anything you did log, what felt most urgent?";
-
     display({
       status: "answering...",
       emoji: "",
       RGB: "#ff9900",
-      text: eodText,
+      text: EOD_QUESTION,
     });
 
     onButtonPressed(() => {
@@ -760,10 +735,305 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(eodText);
+    void ctx.streamExternalReply(EOD_QUESTION);
 
     ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "eod_prompt") {
+        ctx.transitionTo("eod_wait");
+      }
+    });
+  },
+
+  eod_wait: (ctx: ChatFlowContext) => {
+    onButtonDoubleClick(null);
+
+    // Keep open eyes (status starts with "answering" so face stays on answering.png)
+    display({
+      status: "answering...",
+      emoji: "",
+      RGB: "#331a00",
+      text: "Hold to respond, or press briefly to skip.",
+      rag_icon_visible: false,
+    });
+
+    let skipTimer: NodeJS.Timeout | null = null;
+
+    onButtonPressed(() => {
+      skipTimer = setTimeout(() => {
+        skipTimer = null;
+        ctx.transitionTo("eod_listening");
+      }, 500);
+    });
+
+    onButtonReleased(() => {
+      if (skipTimer) {
+        clearTimeout(skipTimer);
+        skipTimer = null;
+        // Short press = skip → go straight to confirmation
+        ctx.transitionTo("eod_confirmation");
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "eod_wait") {
+        ctx.transitionTo("sleep");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+
+  eod_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/eod-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("eod_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      ctx.pendingLogResponseText = EOD_FOLLOWUP_1;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
+      void ctx.streamExternalReply(EOD_FOLLOWUP_1);
+    });
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    result.then(() => {
+      if (ctx.currentFlowName !== "eod_listening") return;
+      saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
+      ctx.transitionTo("eod_followup_1");
+    }).catch(() => ctx.transitionTo("sleep"));
+  },
+
+  eod_followup_1: (ctx: ChatFlowContext) => {
+    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
+      ? ctx.pendingLogResponseText
+      : EOD_FOLLOWUP_1;
+
+    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: fullText });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(fullText);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "eod_followup_1") {
+        ctx.transitionTo("eod_followup_wait");
+      }
+    });
+  },
+
+  eod_followup_wait: (ctx: ChatFlowContext) => {
+    onButtonDoubleClick(null);
+
+    display({
+      status: "answering...",
+      emoji: "",
+      RGB: "#331a00",
+      text: "Hold to respond, or press briefly to skip.",
+      rag_icon_visible: false,
+    });
+
+    let skipTimer: NodeJS.Timeout | null = null;
+
+    onButtonPressed(() => {
+      skipTimer = setTimeout(() => {
+        skipTimer = null;
+        ctx.transitionTo("eod_followup_listening");
+      }, 500);
+    });
+
+    onButtonReleased(() => {
+      if (skipTimer) {
+        clearTimeout(skipTimer);
+        skipTimer = null;
+        ctx.transitionTo("eod_confirmation");
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "eod_followup_wait") {
+        ctx.transitionTo("eod_confirmation");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+
+  eod_followup_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/eod-followup-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("eod_followup_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      ctx.pendingLogResponseText = EOD_FOLLOWUP_2;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
+      void ctx.streamExternalReply(EOD_FOLLOWUP_2);
+    });
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    result.then(() => {
+      if (ctx.currentFlowName !== "eod_followup_listening") return;
+      saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
+      ctx.transitionTo("eod_followup_2");
+    }).catch(() => ctx.transitionTo("sleep"));
+  },
+
+  eod_followup_2: (ctx: ChatFlowContext) => {
+    const fullText = ctx.logTTSPreStarted && ctx.pendingLogResponseText
+      ? ctx.pendingLogResponseText
+      : EOD_FOLLOWUP_2;
+
+    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: fullText });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(fullText);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "eod_followup_2") {
+        ctx.transitionTo("eod_followup_2_wait");
+      }
+    });
+  },
+
+  eod_followup_2_wait: (ctx: ChatFlowContext) => {
+    onButtonDoubleClick(null);
+
+    display({
+      status: "answering...",
+      emoji: "",
+      RGB: "#331a00",
+      text: "Hold to respond, or press briefly to skip.",
+      rag_icon_visible: false,
+    });
+
+    let skipTimer: NodeJS.Timeout | null = null;
+
+    onButtonPressed(() => {
+      skipTimer = setTimeout(() => {
+        skipTimer = null;
+        ctx.transitionTo("eod_followup_2_listening");
+      }, 500);
+    });
+
+    onButtonReleased(() => {
+      if (skipTimer) {
+        clearTimeout(skipTimer);
+        skipTimer = null;
+        ctx.transitionTo("eod_confirmation");
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "eod_followup_2_wait") {
+        ctx.transitionTo("eod_confirmation");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+
+  eod_followup_2_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/eod-followup2-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("eod_followup_2_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      ctx.pendingLogResponseText = EOD_CONFIRMATION;
+      ctx.logTTSPreStarted = true;
+      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
+      void ctx.streamExternalReply(EOD_CONFIRMATION);
+    });
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    result.then(() => {
+      if (ctx.currentFlowName !== "eod_followup_2_listening") return;
+      saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
+      ctx.transitionTo("eod_confirmation");
+    }).catch(() => ctx.transitionTo("sleep"));
+  },
+
+  eod_confirmation: (ctx: ChatFlowContext) => {
+    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
+
+    onButtonPressed(() => {
+      ctx.streamResponser.stop();
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(EOD_CONFIRMATION);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.pendingLogResponseText = "";
+
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "eod_confirmation") {
         ctx.transitionTo("sleep");
       }
     });
