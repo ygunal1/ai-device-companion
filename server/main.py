@@ -13,6 +13,20 @@ from pydantic import BaseModel
 DB_PATH = os.environ.get("DB_PATH", "logs.db")
 API_KEY = os.environ.get("API_KEY", "")
 
+# Per-participant passwords: "P01:pass1,P02:pass2" in env var
+_raw = os.environ.get("PARTICIPANT_PASSWORDS", "")
+PARTICIPANT_PASSWORDS: dict[str, str] = dict(
+    item.split(":", 1) for item in _raw.split(",") if ":" in item
+)
+
+
+def check_participant_auth(participant_id: str, password: str) -> None:
+    if not PARTICIPANT_PASSWORDS:
+        return  # no passwords configured — open access
+    expected = PARTICIPANT_PASSWORDS.get(participant_id)
+    if expected is None or password != expected:
+        raise HTTPException(status_code=403, detail="Invalid participant ID or password")
+
 app = FastAPI(title="Whisplay Log Collector")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -132,33 +146,54 @@ def my_data_page():
     button { padding: 8px 16px; font-size: 1rem; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px; }
     #view-btn { background: #0066cc; color: white; }
     #result { margin-top: 24px; }
+    .fields { display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
+    .fields label { font-size: 0.9rem; color: #555; margin-bottom: 2px; display: block; }
+    .fields input { width: 100%; box-sizing: border-box; margin: 0; }
+    .fields button { margin: 4px 0 0 0; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
     th { background: #f5f5f5; }
     .empty { color: #888; font-style: italic; }
     .del-entry { background: #cc2200; color: white; font-size: 0.8rem; padding: 4px 10px; margin-left: 0; }
     .del-all { background: #7a0000; color: white; margin-top: 16px; }
-    .notice { background: #fff3cd; padding: 12px; border-radius: 4px; margin-top: 16px; font-size: 0.9rem; }
+    .error { color: #cc2200; margin-top: 12px; }
   </style>
 </head>
 <body>
   <h1>My Study Data</h1>
-  <p>Enter your participant ID to view or remove entries recorded on your device.
-     Deleted entries are removed from your view but a copy is kept by the research team
-     as required by the study protocol.</p>
-  <div>
-    <input id="pid" type="text" placeholder="e.g. P01" />
-    <button id="view-btn" onclick="loadData()">View my entries</button>
+  <p>Enter your participant ID and password to view or remove entries recorded on your device.</p>
+  <div class="fields">
+    <div>
+      <label for="pid">Participant ID</label>
+      <input id="pid" type="text" placeholder="e.g. P01" />
+    </div>
+    <div>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" placeholder="your password" onkeydown="if(event.key==='Enter')loadData()" />
+    </div>
+    <div>
+      <button id="view-btn" onclick="loadData()">View my entries</button>
+    </div>
   </div>
   <div id="result"></div>
 
   <script>
     let currentPid = "";
+    let currentPw = "";
+
+    function authParams() {
+      return "?password=" + encodeURIComponent(currentPw);
+    }
 
     async function loadData() {
       currentPid = document.getElementById("pid").value.trim();
+      currentPw  = document.getElementById("pw").value;
       if (!currentPid) return;
-      const res = await fetch("/my-data/" + encodeURIComponent(currentPid));
+      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + authParams());
+      if (res.status === 403) {
+        document.getElementById("result").innerHTML = "<p class='error'>Incorrect participant ID or password.</p>";
+        return;
+      }
       const data = await res.json();
       render(data.entries);
     }
@@ -182,16 +217,13 @@ def my_data_page():
         html += "</tr>";
       }
       html += "</table>";
-      html += "<div class='notice'>";
-      html += "Deleting an entry removes it from this view. The research team retains an anonymised copy as required by the study protocol.";
-      html += "<br><br><button class='del-all' onclick='deleteAll()'>Delete all my entries</button>";
-      html += "</div>";
+      html += "<br><button class='del-all' onclick='deleteAll()'>Delete all my entries</button>";
       result.innerHTML = html;
     }
 
     async function deleteEntry(id) {
       if (!confirm("Remove this entry from your record?")) return;
-      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + "/" + id, { method: "DELETE" });
+      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + "/" + id + authParams(), { method: "DELETE" });
       if (res.ok) {
         const row = document.getElementById("row-" + id);
         if (row) row.remove();
@@ -206,7 +238,7 @@ def my_data_page():
 
     async function deleteAll() {
       if (!confirm("Remove all entries for " + currentPid + "? This cannot be undone.")) return;
-      const res = await fetch("/my-data/" + encodeURIComponent(currentPid), { method: "DELETE" });
+      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + authParams(), { method: "DELETE" });
       if (res.ok) {
         document.getElementById("result").innerHTML = "<p>All entries for <strong>" + currentPid + "</strong> have been removed from your view.</p>";
       } else {
@@ -220,8 +252,9 @@ def my_data_page():
 
 
 @app.get("/my-data/{participant_id}")
-def get_my_data(participant_id: str):
+def get_my_data(participant_id: str, password: str = ""):
     """Return a participant's own non-deleted entries."""
+    check_participant_auth(participant_id, password)
     with get_db() as conn:
         rows = conn.execute(
             """SELECT id, date, type, transcript
@@ -234,8 +267,9 @@ def get_my_data(participant_id: str):
 
 
 @app.delete("/my-data/{participant_id}/{entry_id}")
-def delete_my_entry(participant_id: str, entry_id: int):
+def delete_my_entry(participant_id: str, entry_id: int, password: str = ""):
     """Soft-delete a single entry. Only works if it belongs to the participant."""
+    check_participant_auth(participant_id, password)
     with get_db() as conn:
         result = conn.execute(
             """UPDATE logs SET deleted_at = ?
@@ -248,8 +282,9 @@ def delete_my_entry(participant_id: str, entry_id: int):
 
 
 @app.delete("/my-data/{participant_id}")
-def delete_my_data(participant_id: str):
+def delete_my_data(participant_id: str, password: str = ""):
     """Soft-delete all entries for a participant (GDPR right to erasure)."""
+    check_participant_auth(participant_id, password)
     with get_db() as conn:
         conn.execute(
             "UPDATE logs SET deleted_at = ? WHERE participant_id = ? AND deleted_at IS NULL",
