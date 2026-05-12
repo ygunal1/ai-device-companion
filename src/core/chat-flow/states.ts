@@ -491,7 +491,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      ctx.pendingLogResponseText = FOLLOWUP_1;
+      ctx.logTTSPreStarted = true;
+      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
+      void ctx.streamExternalReply(FOLLOWUP_1);
     });
 
     display({
@@ -514,6 +518,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_response: (ctx: ChatFlowContext) => {
+    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
+      ? ctx.logPlayEndPromise
+      : ctx.streamResponser.getPlayEndPromise();
+
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
 
     onButtonPressed(() => {
@@ -522,9 +530,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(FOLLOWUP_1);
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(FOLLOWUP_1);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.logPlayEndPromise = null;
+    ctx.pendingLogResponseText = "";
 
-    ctx.streamResponser.getPlayEndPromise().then(() => {
+    playEnd.then(() => {
       if (ctx.currentFlowName === "log_response") {
         ctx.transitionTo("log_followup_wait");
       }
@@ -570,7 +583,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      ctx.pendingLogResponseText = FOLLOWUP_2;
+      ctx.logTTSPreStarted = true;
+      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
+      void ctx.streamExternalReply(FOLLOWUP_2);
     });
 
     display({
@@ -593,6 +610,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_followup_response: (ctx: ChatFlowContext) => {
+    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
+      ? ctx.logPlayEndPromise
+      : ctx.streamResponser.getPlayEndPromise();
+
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
 
     onButtonPressed(() => {
@@ -601,9 +622,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(FOLLOWUP_2);
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(FOLLOWUP_2);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.logPlayEndPromise = null;
+    ctx.pendingLogResponseText = "";
 
-    ctx.streamResponser.getPlayEndPromise().then(() => {
+    playEnd.then(() => {
       if (ctx.currentFlowName === "log_followup_response") {
         ctx.transitionTo("log_followup_2_wait");
       }
@@ -649,7 +675,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      ctx.pendingLogResponseText = LOG_CONFIRMATION;
+      ctx.logTTSPreStarted = true;
+      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
+      void ctx.streamExternalReply(LOG_CONFIRMATION);
     });
 
     display({
@@ -672,6 +702,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_confirmation: (ctx: ChatFlowContext) => {
+    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
+      ? ctx.logPlayEndPromise
+      : ctx.streamResponser.getPlayEndPromise();
+
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
 
     onButtonPressed(() => {
@@ -680,9 +714,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    void ctx.streamExternalReply(LOG_CONFIRMATION);
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(LOG_CONFIRMATION);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.logPlayEndPromise = null;
+    ctx.pendingLogResponseText = "";
 
-    ctx.streamResponser.getPlayEndPromise().then(() => {
+    playEnd.then(() => {
       if (ctx.currentFlowName === "log_confirmation") {
         ctx.transitionTo("sleep");
       }

@@ -56,6 +56,9 @@ export interface ChatFlowContext {
   isFromWakeListening: boolean;
   enterMusicAfterAnswer: boolean;
   musicDisplayText: string;
+  pendingLogResponseText: string;
+  logTTSPreStarted: boolean;
+  logPlayEndPromise: Promise<void> | null;
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;
