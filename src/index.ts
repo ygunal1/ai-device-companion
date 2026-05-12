@@ -1,4 +1,4 @@
-import ChatFlow from "./core/ChatFlow";
+import { createChatFlow } from "./core/ChatFlow";
 import dotenv from "dotenv";
 import { startBatteryStatus } from "./status/battery-status";
 import { startWifiStatus } from "./status/wifi-status";
@@ -10,6 +10,6 @@ startBatteryStatus();
 startWifiStatus();
 startVpnStatus();
 
-new ChatFlow({
+createChatFlow({
   enableCamera: process.env.ENABLE_CAMERA === "true",
 });

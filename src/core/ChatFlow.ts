@@ -18,6 +18,7 @@ import { ChatFlowContext, FlowName } from "./chat-flow/types";
 import { playWakeupChime } from "../device/audio";
 import { stopMusicPlayback, isMusicPlaying } from "../device/music-player";
 import type { Status } from "../device/display";
+import { startHeartbeat } from "./heartbeat";
 
 dotEnv.config();
 
@@ -302,6 +303,13 @@ class ChatFlow implements ChatFlowContext {
       }
     }, 30000);
   }
+}
+
+// Start heartbeat after module load so currentFlowName is accessible
+export function createChatFlow(options?: { enableCamera?: boolean }): ChatFlow {
+  const flow = new ChatFlow(options);
+  startHeartbeat(() => flow.currentFlowName);
+  return flow;
 }
 
 export default ChatFlow;

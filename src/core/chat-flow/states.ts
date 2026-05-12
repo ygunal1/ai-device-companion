@@ -1,4 +1,5 @@
 import moment from "moment";
+import fs from "fs";
 import { compact, noop } from "lodash";
 import {
   onButtonPressed,
@@ -43,8 +44,25 @@ import { autoSaveExchange } from "../../config/mempalace";
 import { saveLogEntry } from "../log-store";
 
 const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
-const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "30000");
+const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "60000");
 const SLEEP_DISPLAY_TEXT = "Long press the button to log an entry.";
+
+const audioHasContent = (filePath: string): boolean => {
+  try {
+    return fs.existsSync(filePath) && fs.statSync(filePath).size > 500;
+  } catch {
+    return false;
+  }
+};
+
+const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => {
+  ctx.streamResponser.stop();
+  display({ status: "answering...", emoji: "😕", RGB: "#ff6600", text: "I didn't catch that. Please try again." });
+  void ctx.streamExternalReply("Sorry, I didn't catch that. Please try again.");
+  ctx.streamResponser.getPlayEndPromise().then(() => {
+    ctx.transitionTo(returnState);
+  });
+};
 
 const FOLLOWUP_1 = "On a scale of 1-5, how useful would that be?";
 const FOLLOWUP_2 = "Got it. What would you normally do to take care of this?";
@@ -509,6 +527,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_listening") return;
+        if (!audioHasContent(recordFilePath)) {
+          handleEmptyAudio(ctx, "sleep");
+          return;
+        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "log" });
         ctx.transitionTo("log_response");
       })
@@ -601,6 +623,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
+        if (!audioHasContent(recordFilePath)) {
+          handleEmptyAudio(ctx, "log_followup_wait");
+          return;
+        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
         ctx.transitionTo("log_followup_response");
       })
@@ -693,6 +719,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_2_listening") return;
+        if (!audioHasContent(recordFilePath)) {
+          handleEmptyAudio(ctx, "log_followup_2_wait");
+          return;
+        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
         ctx.transitionTo("log_confirmation");
       })

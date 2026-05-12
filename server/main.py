@@ -53,6 +53,14 @@ def get_db():
 def init_db():
     with get_db() as conn:
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS heartbeats (
+                device_id     TEXT PRIMARY KEY,
+                participant_id TEXT,
+                last_seen     TEXT NOT NULL,
+                status        TEXT
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS logs (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 received_at   TEXT NOT NULL,
@@ -69,6 +77,13 @@ def init_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(logs)").fetchall()]
         if "deleted_at" not in cols:
             conn.execute("ALTER TABLE logs ADD COLUMN deleted_at TEXT")
+
+
+class Heartbeat(BaseModel):
+    deviceId: str
+    participantId: str = ""
+    status: str = "unknown"
+    timestamp: int = 0
 
 
 class LogEntry(BaseModel):
@@ -105,12 +120,47 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
     return {"status": "ok"}
 
 
-@app.get("/export.csv")
-def export_csv(_: str = Depends(require_api_key)):
+@app.post("/heartbeat", status_code=200)
+def receive_heartbeat(hb: Heartbeat, _: str = Depends(require_api_key)):
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO heartbeats (device_id, participant_id, last_seen, status)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(device_id) DO UPDATE SET
+                 participant_id = excluded.participant_id,
+                 last_seen      = excluded.last_seen,
+                 status         = excluded.status""",
+            (hb.deviceId, hb.participantId, datetime.utcnow().isoformat(), hb.status),
+        )
+    return {"status": "ok"}
+
+
+@app.get("/devices")
+def list_devices(_: str = Depends(require_api_key)):
+    """Show all devices and when they last checked in."""
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT id, received_at, date, participant_id, device_id, type, transcript, deleted_at
-               FROM logs ORDER BY timestamp ASC"""
+            "SELECT device_id, participant_id, last_seen, status FROM heartbeats ORDER BY last_seen DESC"
+        ).fetchall()
+    return {"devices": [dict(r) for r in rows]}
+
+
+@app.get("/export.csv")
+def export_csv(from_date: str = "", to_date: str = "", _: str = Depends(require_api_key)):
+    filters = ["1=1"]
+    params: list = []
+    if from_date:
+        filters.append("date >= ?")
+        params.append(from_date)
+    if to_date:
+        filters.append("date <= ?")
+        params.append(to_date + "T23:59:59")
+    where = " AND ".join(filters)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT id, received_at, date, participant_id, device_id, type, transcript, deleted_at
+               FROM logs WHERE {where} ORDER BY timestamp ASC""",
+            params,
         ).fetchall()
 
     buf = io.StringIO()
