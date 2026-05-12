@@ -730,7 +730,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   // ── End-of-day interactive flow ──────────────────────────────────────────
   eod_prompt: (ctx: ChatFlowContext) => {
     display({
-      status: "answering...",
+      status: "quick question",
       emoji: "",
       RGB: "#ff9900",
       text: EOD_QUESTION,
@@ -754,9 +754,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   eod_wait: (ctx: ChatFlowContext) => {
     onButtonDoubleClick(null);
 
-    // Keep open eyes (status starts with "answering" so face stays on answering.png)
     display({
-      status: "answering...",
+      status: "quick question",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -805,7 +804,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
     });
 
     display({
@@ -824,7 +823,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_1: (ctx: ChatFlowContext) => {
-    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
+    display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -845,7 +844,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     display({
-      status: "answering...",
+      status: "quick question",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -893,7 +892,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
     });
 
     display({
@@ -912,7 +911,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_2: (ctx: ChatFlowContext) => {
-    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
+    display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -933,7 +932,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     display({
-      status: "answering...",
+      status: "quick question",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -981,7 +980,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
     });
 
     display({
@@ -1000,7 +999,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_confirmation: (ctx: ChatFlowContext) => {
-    display({ status: "answering...", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
+    display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
