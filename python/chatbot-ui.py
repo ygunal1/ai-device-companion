@@ -29,11 +29,12 @@ scroll_stop_event = threading.Event()
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 FACE_IDLE = os.path.join(_ASSETS_DIR, "idle.png")
 FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening.png")
+FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering.png")
 face_state = "idle"   # "idle" | "listening" | "speaking"
 _face_rgb565_cache: dict = {}  # path → rgb565 bytes (pre-encoded, keyed by (path, w, h))
 
 # Keep legacy helpers so nothing else breaks
-FACE_FILENAMES = {"idle.png", "listening.png"}
+FACE_FILENAMES = {"idle.png", "listening.png", "answering.png"}
 _face_image_cache = {}
 
 def is_face_image(path):
@@ -131,7 +132,12 @@ class RenderThread(threading.Thread):
         if camera_mode:
             return False  # Skip rendering if in camera mode
         # Always show face full-screen (idle=closed eyes, listening/speaking=open eyes)
-        face_path = FACE_LISTENING if face_state in ("listening", "speaking") else FACE_IDLE
+        if face_state == "speaking":
+            face_path = FACE_ANSWERING
+        elif face_state == "listening":
+            face_path = FACE_LISTENING
+        else:
+            face_path = FACE_IDLE
         label_text = {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
         cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
