@@ -93,10 +93,6 @@ export function saveLogEntry(params: {
 }): void {
   const { audioPath, timestamp, type = "log" } = params;
 
-  const deleteAudio = () => {
-    try { fs.unlinkSync(audioPath); } catch { /* non-fatal */ }
-  };
-
   recognizeAudio(audioPath)
     .then((transcript) => {
       const entry: LogEntry = {
@@ -109,7 +105,6 @@ export function saveLogEntry(params: {
       };
       appendEntry(entry);
       console.log(`[Log] ${type} transcript saved: "${transcript}"`);
-      deleteAudio();
       void sendToEndpoint(entry);
     })
     .catch((err) => {
