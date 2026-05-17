@@ -221,7 +221,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       stop();
       display({
         RGB: "#ff6800",
-        image: "",
       });
     };
     onButtonReleased(handleRelease);
@@ -242,6 +241,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   wake_listening: (ctx: ChatFlowContext) => {
+    setFace("listening");
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";
     ctx.isFromWakeListening = true;
@@ -321,6 +321,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   answer: (ctx: ChatFlowContext) => {
+    setFace("answering");
     ctx.enterMusicAfterAnswer = false;
     ctx.musicDisplayText = "";
     display({
