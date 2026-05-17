@@ -9,6 +9,7 @@ import dotEnv from "dotenv";
 const FACES = {
   idle:      resolve(__dirname, "../../assets/idle.png"),
   listening: resolve(__dirname, "../../assets/listening.png"),
+  answering: resolve(__dirname, "../../assets/answering.png"),
 } as const;
 
 type FaceState = keyof typeof FACES;
@@ -502,7 +503,6 @@ export class WhisplayDisplay {
   private handleButtonReleasedEvent(): void {
     this.buttonDown = false;
     this.buttonReleaseTimeArray.push(Date.now());
-    this.setFace("idle"); // eyes closed — back to idle
     if (!this.buttonDetectInterval) {
       console.log("emit released");
       this.buttonReleasedCallback();

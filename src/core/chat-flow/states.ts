@@ -10,6 +10,7 @@ import {
   onCameraCapture,
   onTextInput,
   isButtonDown,
+  setFace,
 } from "../../device/display";
 import {
   recordAudio,
@@ -77,13 +78,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
     let longPressTimer: NodeJS.Timeout | null = null;
 
+    setFace("idle");
     onCameraModeExit(null);
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
       resetCameraModeControl();
       stopMusicPlayback();
-      display({ text: "Listening...", RGB: "#00aa44" });
+      setFace("listening");
+      display({ status: "listening", text: "Listening...", RGB: "#00aa44" });
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         ctx.transitionTo("log_listening");
@@ -96,6 +99,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         longPressTimer = null;
       }
       if (ctx.currentFlowName === "sleep") {
+        setFace("idle");
         display({ status: "idle", emoji: "", RGB: "#000055", text: SLEEP_DISPLAY_TEXT });
       }
     });
@@ -509,6 +513,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      setFace("answering");
       ctx.pendingLogResponseText = FOLLOWUP_1;
       ctx.logTTSPreStarted = true;
       ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
@@ -566,6 +571,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   log_followup_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
     onButtonDoubleClick(null);
 
     display({
@@ -605,6 +611,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      setFace("answering");
       ctx.pendingLogResponseText = FOLLOWUP_2;
       ctx.logTTSPreStarted = true;
       ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
@@ -662,6 +669,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
   },
   log_followup_2_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
     onButtonDoubleClick(null);
 
     display({
@@ -701,6 +709,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
+      setFace("answering");
       ctx.pendingLogResponseText = LOG_CONFIRMATION;
       ctx.logTTSPreStarted = true;
       ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
