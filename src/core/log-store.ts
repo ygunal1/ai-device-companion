@@ -95,6 +95,10 @@ export function saveLogEntry(params: {
 }): Promise<string> {
   const { audioPath, timestamp, type = "log", question } = params;
 
+  const deleteAudio = () => {
+    try { fs.unlinkSync(audioPath); } catch {}
+  };
+
   return recognizeAudio(audioPath)
     .then((transcript) => {
       const entry: LogEntry = {
@@ -107,12 +111,13 @@ export function saveLogEntry(params: {
         deviceId: DEVICE_ID,
       };
       appendEntry(entry);
+      deleteAudio();
       console.log(`[Log] ${type} transcript saved: "${transcript}"`);
       void sendToEndpoint(entry);
       return transcript || "";
     })
     .catch((err) => {
-      console.error("[Log] Transcription failed — audio kept at", audioPath, err);
+      console.error("[Log] Transcription failed:", err);
       appendEntry({
         timestamp,
         date: new Date(timestamp).toISOString(),
@@ -122,6 +127,7 @@ export function saveLogEntry(params: {
         participantId: PARTICIPANT_ID,
         deviceId: DEVICE_ID,
       });
+      deleteAudio();
       return "";
     });
 }
