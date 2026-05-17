@@ -11,6 +11,7 @@ interface LogEntry {
   timestamp: number;
   date: string;
   type: "log" | "followup" | "eod";
+  question?: string;
   transcript: string;
   participantId: string;
   deviceId: string;
@@ -90,15 +91,17 @@ export function saveLogEntry(params: {
   audioPath: string;
   timestamp: number;
   type?: "log" | "followup" | "eod";
-}): void {
-  const { audioPath, timestamp, type = "log" } = params;
+  question?: string;
+}): Promise<string> {
+  const { audioPath, timestamp, type = "log", question } = params;
 
-  recognizeAudio(audioPath)
+  return recognizeAudio(audioPath)
     .then((transcript) => {
       const entry: LogEntry = {
         timestamp,
         date: new Date(timestamp).toISOString(),
         type,
+        ...(question ? { question } : {}),
         transcript: transcript || "",
         participantId: PARTICIPANT_ID,
         deviceId: DEVICE_ID,
@@ -106,17 +109,19 @@ export function saveLogEntry(params: {
       appendEntry(entry);
       console.log(`[Log] ${type} transcript saved: "${transcript}"`);
       void sendToEndpoint(entry);
+      return transcript || "";
     })
     .catch((err) => {
       console.error("[Log] Transcription failed — audio kept at", audioPath, err);
-      // do NOT delete audio: keep it so it can be manually re-transcribed later
       appendEntry({
         timestamp,
         date: new Date(timestamp).toISOString(),
         type,
+        ...(question ? { question } : {}),
         transcript: "",
         participantId: PARTICIPANT_ID,
         deviceId: DEVICE_ID,
       });
+      return "";
     });
 }

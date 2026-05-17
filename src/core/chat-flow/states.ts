@@ -43,6 +43,7 @@ import { DEFAULT_EMOJI } from "../../utils";
 import { isMusicPlaying, getCurrentTrackTitle, stopMusicPlayback, startPendingMusicPlayback, onMusicTrackChange, onMusicPlaybackEnd } from "../../device/music-player";
 import { autoSaveExchange } from "../../config/mempalace";
 import { saveLogEntry } from "../log-store";
+import { openai, openaiLLMModel } from "../../cloud-api/openai/openai";
 
 const LONG_PRESS_MS = parseInt(process.env.LONG_PRESS_MS || "1500");
 const FOLLOWUP_WAIT_TIMEOUT_MS = parseInt(process.env.FOLLOWUP_WAIT_TIMEOUT_MS || "60000");
@@ -65,9 +66,136 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
   });
 };
 
-const FOLLOWUP_1 = "On a scale of 1-5, how useful would that be?";
-const FOLLOWUP_2 = "Got it. What would you normally do to take care of this?";
+const FOLLOWUP_1 = "On a scale of 1-5, how useful would it be if I could help with this?";
+const FOLLOWUP_1_WITH_TRANSITION = "Thanks. On a scale of 1-5, how useful would it be if I could help with this?";
+const FOLLOWUP_2 = "Are there any tools you would usually use for this?";
 const LOG_CONFIRMATION = "I've noted this down, thank you!";
+
+const DYNAMIC_FOLLOWUP_SYSTEM_PROMPT = `You are helping a researcher collect structured diary logs from knowledge workers.
+A participant has just spoken a short voice log describing something they wished
+an AI agent could help them with during their workday.
+
+Your job is to ask ONE short follow-up question that would meaningfully improve
+understanding of the situation, or return null if enough context exists.
+
+CORE EVALUATION RULE:
+Before generating any follow-up, ask yourself two questions:
+1. Does a researcher already understand what the participant wanted and why?
+2. Would an AI agent handling this task already know or be able to infer the
+   missing information from the participant's environment, files, or context?
+
+If the answer to either question is yes for all missing details, return null.
+If a follow-up response has already been given, re-evaluate the original log
+AND all previous responses together as a complete picture. Do not search for
+new gaps introduced by the follow-up response itself. When the combined context
+is sufficient, return null immediately.
+
+NEVER ask about:
+- Information an AI agent could infer from the participant's environment,
+  open files, codebase, calendar, or active applications (e.g. programming
+  language, platform, file type, meeting details already in calendar)
+- Timing or urgency unless the participant explicitly mentioned a deadline
+- Recurrence unless it is a reminder or notification request
+- Tasks described as recurring or something the participant keeps forgetting
+- Anything already present in the log or answered in a previous follow-up
+- Restating or rephrasing what the participant already said in more detail
+
+DO NOT ask yes/no questions.
+DO NOT ask more than one question per turn.
+When in doubt between asking and returning null, return null.
+
+FOLLOW-UP LIMITS:
+- Dynamic follow-ups (questions you generate): maximum 2 total across the
+  entire interaction. After 2 dynamic follow-ups, return null regardless of
+  remaining context gaps — the fixed follow-up questions will follow.
+- Static follow-ups (the researcher's fixed questions asked after dynamic
+  follow-ups are complete) are separate and always asked. Do not count them
+  toward your limit.
+- After each dynamic follow-up response, re-evaluate the full context.
+  If sufficient, return null early rather than using both dynamic slots.
+
+SPECIFIC RULES in order of priority:
+
+REMINDERS AND NOTIFICATIONS
+- If the participant says "remind me", "notify me", "let me know", or similar,
+  and does not specify when or how often: ask when and how often they would
+  want to be reminded or notified.
+- Example: "remind me to check in with my team" → ask when and how often.
+  If they answer (e.g. "we are working on a text analytics project"),
+  return null — do not probe the project further.
+
+INFORMATIONAL REQUESTS
+- If the participant asks for information (e.g. "tell me about", "what is",
+  "explain") and it is unclear whether they want a quick answer or detailed
+  overview: ask which they prefer.
+- Do not apply this rule to action requests that happen to involve
+  information (e.g. "summarize my emails").
+
+TASK CONTEXT
+- If the participant mentions a specific task but does not describe whether
+  they are working independently, collaborating, or in a meeting: ask which.
+  - If working independently and main goal is unclear: ask what their
+    main goal is.
+- If tools or systems are missing AND an AI agent could not infer them from
+  context: ask what tools or systems are involved.
+  - Do NOT ask about tools an agent could detect automatically (programming
+    language, active application, open files, current document).
+
+EMOTIONAL OR OPINION EXPRESSIONS
+- If the participant expresses frustration or a negative opinion: ask what
+  specifically made it difficult or frustrating.
+
+VAGUE OR UNCLEAR LOGS
+- If what the participant wanted done is genuinely unclear: ask what they
+  had in mind.
+- If the log is too short to extract any intent: ask "can you tell me a
+  bit more about what you had in mind?"
+- Do not ask for specificity when the general intent is already clear.
+
+EXAMPLES OF WHEN TO RETURN NULL:
+- "I have a bug in my code in this file" → null. The file and codebase are
+  accessible to an agent. The intent (fix the bug) is clear.
+- "Follow-up email to a client I keep forgetting" → null. Intent and reason
+  are both clear.
+- "Remind me to check in with my team" + response "we're working on text
+  analytics" → null. Do not ask further about the project.
+- Any log where the participant has already described what they want and why,
+  even briefly → null.
+
+Return ONLY one of the following:
+- A single question of no more than 15 words in natural spoken language
+- The exact string: null
+
+Do not explain your reasoning. Do not return more than one question.`;
+
+async function generateDynamicFollowup(
+  transcript: string,
+  previousFollowup: string,
+  previousResponse: string
+): Promise<string | null> {
+  if (!openai) return null;
+  const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"`;
+  try {
+    const completion = await openai.chat.completions.create({
+      model: openaiLLMModel,
+      messages: [
+        { role: "system", content: DYNAMIC_FOLLOWUP_SYSTEM_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      max_tokens: 60,
+      temperature: 0.7,
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() || "null";
+    if (raw === "null" || !raw) return null;
+    // Strip surrounding quotes the LLM sometimes adds
+    const result = raw.replace(/^["']|["']$/g, "").trim();
+    if (!result) return null;
+    return result;
+  } catch (err) {
+    console.error("[DynamicFollowup] LLM call failed:", err);
+    return null;
+  }
+}
 
 const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
 const EOD_FOLLOWUP_1 = "On a scale of 1 to 5, how useful would it have been if I had taken care of that?";
@@ -515,11 +643,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       stop();
       setFace("answering");
-      ctx.pendingLogResponseText = FOLLOWUP_1;
-      ctx.logTTSPreStarted = true;
-      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
-      void ctx.streamExternalReply(FOLLOWUP_1);
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
     display({
@@ -533,12 +657,156 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "log" });
-        ctx.transitionTo("log_response");
+        ctx.transitionTo("log_processing");
       })
       .catch((err) => {
         console.error("[log_listening] Recording error:", err);
         ctx.transitionTo("sleep");
+      });
+  },
+  log_processing: (ctx: ChatFlowContext) => {
+    onButtonPressed(() => { ctx.transitionTo("sleep"); });
+    onButtonReleased(noop);
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
+
+    ctx.logDynamicFollowupCount = 0;
+    ctx.logLastDynamicFollowup = "";
+    ctx.logLastDynamicResponse = "";
+
+    const recordFilePath = ctx.currentRecordFilePath;
+    const startTime = Date.now();
+
+    const fallbackToFixed = () => {
+      if (ctx.currentFlowName !== "log_processing") return;
+      ctx.pendingLogResponseText = FOLLOWUP_1;
+      ctx.logTTSPreStarted = true;
+      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
+      void ctx.streamExternalReply(FOLLOWUP_1);
+      ctx.transitionTo("log_response");
+    };
+
+    saveLogEntry({ audioPath: recordFilePath, timestamp: startTime, type: "log" })
+      .then(async (transcript) => {
+        if (ctx.currentFlowName !== "log_processing") return;
+        ctx.logInitialTranscript = transcript;
+        console.log("[log_processing] transcript:", transcript);
+        const dynamicQuestion = await generateDynamicFollowup(transcript, "", "");
+        console.log("[log_processing] dynamicQuestion:", dynamicQuestion);
+        if (ctx.currentFlowName !== "log_processing") return;
+        if (dynamicQuestion) {
+          ctx.logDynamicFollowupCount = 1;
+          ctx.logLastDynamicFollowup = dynamicQuestion;
+          ctx.pendingLogResponseText = dynamicQuestion;
+          ctx.logTTSPreStarted = true;
+          ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
+          display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: dynamicQuestion });
+          void ctx.streamExternalReply(dynamicQuestion);
+          ctx.transitionTo("log_dynamic_followup_response");
+        } else {
+          fallbackToFixed();
+        }
+      })
+      .catch((err) => {
+        console.error("[log_processing] Error:", err);
+        fallbackToFixed();
+      });
+  },
+  log_dynamic_followup_response: (ctx: ChatFlowContext) => {
+    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
+      ? ctx.logPlayEndPromise
+      : ctx.streamResponser.getPlayEndPromise();
+
+    const question = ctx.pendingLogResponseText;
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: question });
+
+    onButtonPressed(() => { ctx.streamResponser.stop(); ctx.transitionTo("sleep"); });
+    onButtonReleased(noop);
+
+    if (!ctx.logTTSPreStarted) {
+      void ctx.streamExternalReply(question);
+    }
+    ctx.logTTSPreStarted = false;
+    ctx.logPlayEndPromise = null;
+    ctx.pendingLogResponseText = "";
+
+    playEnd.then(() => {
+      if (ctx.currentFlowName === "log_dynamic_followup_response") {
+        ctx.transitionTo("log_dynamic_followup_wait");
+      }
+    });
+  },
+  log_dynamic_followup_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
+    onButtonDoubleClick(null);
+    display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer...", rag_icon_visible: false });
+    onButtonPressed(() => { ctx.transitionTo("log_dynamic_followup_listening"); });
+    onButtonReleased(noop);
+    setTimeout(() => {
+      if (ctx.currentFlowName === "log_dynamic_followup_wait") {
+        ctx.transitionTo("sleep");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+  log_dynamic_followup_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/log-dynamic-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("log_dynamic_followup_wait");
+      return;
+    }
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      setFace("answering");
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
+    });
+
+    display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
+
+    const fallbackToFixed = () => {
+      if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+      ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION;
+      ctx.logTTSPreStarted = true;
+      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1_WITH_TRANSITION });
+      void ctx.streamExternalReply(FOLLOWUP_1_WITH_TRANSITION);
+      ctx.transitionTo("log_response");
+    };
+
+    result
+      .then(async () => {
+        if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+        const responseTranscript = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: ctx.logLastDynamicFollowup });
+        ctx.logLastDynamicResponse = responseTranscript;
+        if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+        if (ctx.logDynamicFollowupCount < 2) {
+          const nextQuestion = await generateDynamicFollowup(ctx.logInitialTranscript, ctx.logLastDynamicFollowup, responseTranscript);
+          if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+          if (nextQuestion) {
+            ctx.logDynamicFollowupCount += 1;
+            ctx.logLastDynamicFollowup = nextQuestion;
+            ctx.pendingLogResponseText = nextQuestion;
+            ctx.logTTSPreStarted = true;
+            ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
+            display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: nextQuestion });
+            void ctx.streamExternalReply(nextQuestion);
+            ctx.transitionTo("log_dynamic_followup_response");
+            return;
+          }
+        }
+        fallbackToFixed();
+      })
+      .catch((err) => {
+        console.error("[log_dynamic_followup_listening] Error:", err);
+        fallbackToFixed();
       });
   },
   log_response: (ctx: ChatFlowContext) => {
@@ -546,7 +814,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       ? ctx.logPlayEndPromise
       : ctx.streamResponser.getPlayEndPromise();
 
-    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
+    const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1;
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
 
     onButtonPressed(() => {
       ctx.streamResponser.stop();
@@ -555,7 +824,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(noop);
 
     if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(FOLLOWUP_1);
+      void ctx.streamExternalReply(followup1Text);
     }
     ctx.logTTSPreStarted = false;
     ctx.logPlayEndPromise = null;
@@ -627,7 +896,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_1_WITH_TRANSITION });
         ctx.transitionTo("log_followup_response");
       })
       .catch((err) => {
@@ -721,7 +990,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_2_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_2 });
         ctx.transitionTo("log_confirmation");
       })
       .catch((err) => {

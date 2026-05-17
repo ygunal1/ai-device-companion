@@ -53,17 +53,9 @@ function startPlayerProcess() {
   if (useWavPlayer) {
     return null;
   } else {
-    // use mpg123 for mp3 files
     const proc = spawn("mpg123", [
-      "-",
-      "--scale",
-      "2",
-      "-o",
-      "alsa",
-      "-a",
-      alsaOutputDevice,
+      "-", "--scale", "2", "-o", "alsa", "-a", alsaOutputDevice,
     ]);
-    // Prevent EPIPE from becoming an uncaught exception when the process dies
     proc.stdin?.on("error", (err) => {
       console.error("Player stdin error:", err.message);
     });
@@ -342,12 +334,7 @@ const playAudioData = (params: TTSResult): Promise<void> => {
 
     if (ttsAudioFormat === "wav") {
       const process = spawn("sox", [
-        "-t",
-        "wav",
-        "-",
-        "-t",
-        "alsa",
-        alsaOutputDevice,
+        "-t", "wav", "-", "-t", "alsa", alsaOutputDevice,
       ]);
       process.stdin?.on("error", (err) => {
         console.error("Sox stdin error:", err.message);
@@ -392,20 +379,18 @@ const playAudioData = (params: TTSResult): Promise<void> => {
 };
 
 const stopPlaying = (): void => {
-  // Also stop any in-progress web playback.
   webAudioBridge.stopPlayback();
 
   if (player.isPlaying) {
     try {
       console.log("Stopping audio playback");
-      const process = player.process;
-      if (process) {
-        process.stdin?.end();
-        process.kill();
+      const proc = player.process;
+      if (proc) {
+        proc.stdin?.end();
+        proc.kill();
       }
     } catch { }
     player.isPlaying = false;
-    // Recreate process
     setTimeout(() => {
       player.process = startPlayerProcess();
     }, 500);

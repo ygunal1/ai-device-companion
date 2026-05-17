@@ -11,7 +11,11 @@ export type FlowName =
   | "image"
   | "external_answer"
   | "log_listening"
+  | "log_processing"
   | "log_response"
+  | "log_dynamic_followup_response"
+  | "log_dynamic_followup_wait"
+  | "log_dynamic_followup_listening"
   | "log_followup_wait"
   | "log_followup_listening"
   | "log_followup_response"
@@ -59,6 +63,10 @@ export interface ChatFlowContext {
   pendingLogResponseText: string;
   logTTSPreStarted: boolean;
   logPlayEndPromise: Promise<void> | null;
+  logInitialTranscript: string;
+  logDynamicFollowupCount: number;
+  logLastDynamicFollowup: string;
+  logLastDynamicResponse: string;
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;
