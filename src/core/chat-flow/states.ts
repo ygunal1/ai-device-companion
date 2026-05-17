@@ -533,10 +533,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_listening") return;
-        if (!audioHasContent(recordFilePath)) {
-          handleEmptyAudio(ctx, "sleep");
-          return;
-        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "log" });
         ctx.transitionTo("log_response");
       })
@@ -631,10 +627,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
-        if (!audioHasContent(recordFilePath)) {
-          handleEmptyAudio(ctx, "log_followup_wait");
-          return;
-        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
         ctx.transitionTo("log_followup_response");
       })
@@ -729,10 +721,6 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_2_listening") return;
-        if (!audioHasContent(recordFilePath)) {
-          handleEmptyAudio(ctx, "log_followup_2_wait");
-          return;
-        }
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup" });
         ctx.transitionTo("log_confirmation");
       })
