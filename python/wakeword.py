@@ -28,7 +28,7 @@ def main():
     print(f"[WakeWord] Using wake words: {wake_words}")
 
     try:
-        model = Model(wakeword_models=model_paths or wake_words)
+        model = Model(wakeword_models=model_paths or wake_words, inference_framework="onnx")
     except Exception as e:
         print(f"[WakeWord] Failed to initialize model: {e}", file=sys.stderr)
         sys.exit(1)
