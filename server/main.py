@@ -69,14 +69,17 @@ def init_db():
                 participant_id TEXT,
                 device_id     TEXT,
                 type          TEXT,
+                question      TEXT,
                 transcript    TEXT,
                 deleted_at    TEXT
             )
         """)
-        # Migration: add deleted_at to existing databases that don't have it
+        # Migrations: add columns to existing databases that don't have them
         cols = [r[1] for r in conn.execute("PRAGMA table_info(logs)").fetchall()]
         if "deleted_at" not in cols:
             conn.execute("ALTER TABLE logs ADD COLUMN deleted_at TEXT")
+        if "question" not in cols:
+            conn.execute("ALTER TABLE logs ADD COLUMN question TEXT")
 
 
 class Heartbeat(BaseModel):
@@ -90,6 +93,7 @@ class LogEntry(BaseModel):
     timestamp: int
     date: str
     type: str
+    question: str = ""
     transcript: str
     participantId: str = ""
     deviceId: str = ""
@@ -105,8 +109,8 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
     with get_db() as conn:
         conn.execute(
             """INSERT INTO logs
-               (received_at, timestamp, date, participant_id, device_id, type, transcript)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (received_at, timestamp, date, participant_id, device_id, type, question, transcript)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 datetime.utcnow().isoformat(),
                 entry.timestamp,
@@ -114,6 +118,7 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
                 entry.participantId,
                 entry.deviceId,
                 entry.type,
+                entry.question or None,
                 entry.transcript,
             ),
         )
@@ -158,14 +163,14 @@ def export_csv(from_date: str = "", to_date: str = "", _: str = Depends(require_
     where = " AND ".join(filters)
     with get_db() as conn:
         rows = conn.execute(
-            f"""SELECT id, received_at, date, participant_id, device_id, type, transcript, deleted_at
+            f"""SELECT id, received_at, date, participant_id, device_id, type, question, transcript, deleted_at
                FROM logs WHERE {where} ORDER BY timestamp ASC""",
             params,
         ).fetchall()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "transcript", "deleted_at"])
+    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "question", "transcript", "deleted_at"])
     for row in rows:
         writer.writerow(list(row))
 
