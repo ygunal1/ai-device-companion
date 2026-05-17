@@ -11,7 +11,12 @@ let isWhisperInstall = false;
 export const checkWhisperInstallation = (): boolean => {
   // check if whisper command is available
   try {
-    spawn("whisper", ["--help"]);
+    const proc = spawn("whisper", ["--help"]);
+    proc.on("error", () => {
+      console.error(
+        "whisper command is not available. Please install Whisper and ensure whisper is in your PATH."
+      );
+    });
   } catch (err) {
     console.error(
       "whisper command is not available. Please install Whisper and ensure whisper is in your PATH."
