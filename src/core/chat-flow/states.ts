@@ -151,19 +151,28 @@ UNCLEAR INTENT OR NO CALL TO ACTION
   a meeting later", "my code isn't working", "I need to email someone"):
   ask how the agent can help with that.
 - Example: "my standup is in 10 minutes" → "how can I help with that?"
-- Example: "I have a lot of emails to get through" → "how can I help
-  with that?"
+- Example: "I have a lot of emails to get through" → "how can I help with that?"
 - Do not apply this rule if the log already contains a clear implicit
   request (e.g. "remind me", "take notes", "summarize") even if no
   explicit call to action is stated.
+
+VAGUE ACTION REQUESTS
+- If the participant makes a clear request but provides no description of
+  the specific problem, symptom, or desired outcome needed to act on it,
+  ask what the issue or goal is.
+- This applies even when an agent could access relevant files or context —
+  the agent still needs to know what to look for or what went wrong.
+- Example: "can you help me debug my code" → "what's the issue you're running into?"
+- Example: "help me write an email" → "what's the email for?"
+- Do not apply this rule if the problem or outcome is already clear from
+  the log, even if briefly stated (e.g. "there's a null pointer error in
+  this file", "help me reply to this client complaint").
 
 REMINDERS AND NOTIFICATIONS
 - If the participant says "remind me", "notify me", "let me know", or similar,
   and does not specify when or how often: ask when and how often they would
   want to be reminded or notified.
 - Example: "remind me to check in with my team" → ask when and how often.
-  If they answer (e.g. "we are working on a text analytics project"),
-  return null — do not probe the project further.
 
 INFORMATIONAL REQUESTS
 - If the participant asks for information (e.g. "tell me about", "what is",
@@ -179,8 +188,6 @@ TASK CONTEXT
     main goal is.
 - If tools or systems are missing AND an AI agent could not infer them from
   context: ask what tools or systems are involved.
-  - Do NOT ask about tools an agent could detect automatically (programming
-    language, active application, open files, current document).
 
 EMOTIONAL OR OPINION EXPRESSIONS
 - If the participant expresses frustration or a negative opinion: ask what
@@ -194,14 +201,15 @@ VAGUE OR UNCLEAR LOGS
 - Do not ask for specificity when the general intent is already clear.
 
 EXAMPLES OF WHEN TO RETURN NULL:
-- "I have a bug in my code in this file" → null. The file and codebase are
-  accessible to an agent. The intent (fix the bug) is clear.
-- "Follow-up email to a client I keep forgetting" → null. Intent and reason
-  are both clear.
-- "Remind me to check in with my team" + response "we're working on text
-  analytics" → null. Do not ask further about the project.
-- Any log where the participant has already described what they want and why,
-  even briefly → null.
+- "I have a bug in my code in this file" → null (file specified, agent can look)
+- "There's a null pointer error on line 42" → null (symptom is clear)
+- "Follow-up email to a client I keep forgetting" → null
+- "Remind me to check in with my team" + response "we're working on text analytics" → null
+
+EXAMPLES OF WHEN TO ASK:
+- "Can you help me debug my code" → "what's the issue you're running into?"
+- "Help me write an email" → "what's the email for?"
+- "I need help with my presentation" → "what do you need done with it?"
 
 Return ONLY one of the following:
 - A single question of no more than 15 words in natural spoken language
