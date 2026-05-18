@@ -84,6 +84,7 @@ def init_db():
         if "entry_id" not in cols:
             conn.execute("ALTER TABLE logs ADD COLUMN entry_id TEXT")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_logs_entry_id ON logs(entry_id) WHERE entry_id IS NOT NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_dedup ON logs(device_id, type, transcript, timestamp)")
 
 
 class Heartbeat(BaseModel):
@@ -112,6 +113,19 @@ def startup():
 @app.post("/logs", status_code=201)
 def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
     with get_db() as conn:
+        # Deduplicate: skip if an identical (device, type, transcript) row arrived within 10s.
+        # This handles the case where two processes send the same recording simultaneously
+        # with different entry_ids, bypassing the entry_id UNIQUE constraint.
+        duplicate = conn.execute(
+            """SELECT 1 FROM logs
+               WHERE device_id = ? AND type = ? AND transcript = ?
+                 AND ABS(timestamp - ?) < 10000
+               LIMIT 1""",
+            (entry.deviceId, entry.type, entry.transcript, entry.timestamp),
+        ).fetchone()
+        if duplicate:
+            return {"status": "ok"}
+
         conn.execute(
             """INSERT OR IGNORE INTO logs
                (received_at, timestamp, date, participant_id, device_id, type, question, transcript, entry_id)
@@ -267,12 +281,13 @@ def my_data_page():
       }
 
       let html = "<p>Found <strong>" + entries.length + " entries</strong> for participant <strong>" + currentPid + "</strong>.</p>";
-      html += "<table><tr><th>Date</th><th>Type</th><th>Transcript</th><th></th></tr>";
+      html += "<table><tr><th>Date</th><th>Type</th><th>Question</th><th>Transcript</th><th></th></tr>";
       for (const e of entries) {
         const d = new Date(e.date).toLocaleString();
         html += "<tr id='row-" + e.id + "'>";
         html += "<td>" + d + "</td>";
         html += "<td>" + e.type + "</td>";
+        html += "<td>" + (e.question || "") + "</td>";
         html += "<td>" + (e.transcript || "<em>empty</em>") + "</td>";
         html += "<td><button class='del-entry' onclick='deleteEntry(" + e.id + ")'>Delete</button></td>";
         html += "</tr>";
@@ -318,7 +333,7 @@ def get_my_data(participant_id: str, password: str = ""):
     check_participant_auth(participant_id, password)
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT id, date, type, transcript
+            """SELECT id, date, type, question, transcript
                FROM logs
                WHERE participant_id = ? AND deleted_at IS NULL
                ORDER BY timestamp ASC""",
