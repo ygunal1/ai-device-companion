@@ -66,8 +66,8 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
   });
 };
 
-const FOLLOWUP_1 = "On a scale of 1-5, how useful would it be if I could help with this?";
-const FOLLOWUP_1_WITH_TRANSITION = "Got it. On a scale of 1-5, how useful would it be if I could help with this?";
+const FOLLOWUP_1 = "How useful would it be for me to handle something like this and why?";
+const FOLLOWUP_1_WITH_TRANSITION = "Got it. How useful would it be for me to handle something like this and why?";
 const FOLLOWUP_2 = "Are there any tools you would usually use for this?";
 const LOG_CONFIRMATION = "Got it, I've noted that down.";
 
@@ -144,6 +144,18 @@ FOLLOW-UP LIMITS:
   If sufficient, return null early rather than using both dynamic slots.
 
 SPECIFIC RULES in order of priority:
+
+UNCLEAR INTENT OR NO CALL TO ACTION
+- If the participant's log is a statement, observation, or description
+  without a clear request or action for an agent to take (e.g. "I have
+  a meeting later", "my code isn't working", "I need to email someone"):
+  ask how the agent can help with that.
+- Example: "my standup is in 10 minutes" → "how can I help with that?"
+- Example: "I have a lot of emails to get through" → "how can I help
+  with that?"
+- Do not apply this rule if the log already contains a clear implicit
+  request (e.g. "remind me", "take notes", "summarize") even if no
+  explicit call to action is stated.
 
 REMINDERS AND NOTIFICATIONS
 - If the participant says "remind me", "notify me", "let me know", or similar,
@@ -228,7 +240,7 @@ async function generateDynamicFollowup(
 }
 
 const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
-const EOD_FOLLOWUP_1 = "On a scale of 1 to 5, how useful would it have been if I had taken care of that?";
+const EOD_FOLLOWUP_1 = "How useful would it be for me to handle something like this and why?";
 const EOD_FOLLOWUP_2 = "Did you do anything about this when it came up today?";
 const EOD_CONFIRMATION = "Got it, I've noted that down. Have a good evening.";
 
