@@ -770,7 +770,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const question = ctx.pendingLogResponseText;
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: question });
 
-    onButtonPressed(() => { ctx.streamResponser.stop(); ctx.transitionTo("sleep"); });
+    onButtonPressed(noop);
     onButtonReleased(noop);
 
     if (!ctx.logTTSPreStarted) {

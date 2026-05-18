@@ -142,11 +142,13 @@ export class WhisplayDisplay {
 
     const blink = () => {
       if (this.faceState !== "idle") return;
-      // Briefly show open eyes, then close again
       this.display({ image: FACES.listening });
       setTimeout(() => {
         if (this.faceState === "idle") {
           this.display({ image: FACES.idle });
+        } else {
+          // state changed mid-blink — re-render the correct face
+          this.display({ image: FACES[this.faceState], emoji: "" });
         }
       }, 150);
     };
