@@ -71,7 +71,8 @@ def init_db():
                 type          TEXT,
                 question      TEXT,
                 transcript    TEXT,
-                deleted_at    TEXT
+                deleted_at    TEXT,
+                entry_id      TEXT UNIQUE
             )
         """)
         # Migrations: add columns to existing databases that don't have them
@@ -80,6 +81,9 @@ def init_db():
             conn.execute("ALTER TABLE logs ADD COLUMN deleted_at TEXT")
         if "question" not in cols:
             conn.execute("ALTER TABLE logs ADD COLUMN question TEXT")
+        if "entry_id" not in cols:
+            conn.execute("ALTER TABLE logs ADD COLUMN entry_id TEXT")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_logs_entry_id ON logs(entry_id) WHERE entry_id IS NOT NULL")
 
 
 class Heartbeat(BaseModel):
@@ -90,6 +94,7 @@ class Heartbeat(BaseModel):
 
 
 class LogEntry(BaseModel):
+    entryId: str = ""
     timestamp: int
     date: str
     type: str
@@ -108,9 +113,9 @@ def startup():
 def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO logs
-               (received_at, timestamp, date, participant_id, device_id, type, question, transcript)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT OR IGNORE INTO logs
+               (received_at, timestamp, date, participant_id, device_id, type, question, transcript, entry_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 datetime.utcnow().isoformat(),
                 entry.timestamp,
@@ -120,6 +125,7 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
                 entry.type,
                 entry.question or None,
                 entry.transcript,
+                entry.entryId or None,
             ),
         )
     return {"status": "ok"}

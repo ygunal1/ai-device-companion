@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { logsDir } from "../utils/dir";
@@ -8,6 +9,7 @@ import { recognizeAudio } from "../cloud-api/server";
 dotenv.config();
 
 interface LogEntry {
+  entryId: string;
   timestamp: number;
   date: string;
   type: "log" | "followup" | "eod";
@@ -102,6 +104,7 @@ export function saveLogEntry(params: {
   return recognizeAudio(audioPath)
     .then((transcript) => {
       const entry: LogEntry = {
+        entryId: crypto.randomUUID(),
         timestamp,
         date: new Date(timestamp).toISOString(),
         type,
@@ -119,6 +122,7 @@ export function saveLogEntry(params: {
     .catch((err) => {
       console.error("[Log] Transcription failed:", err);
       appendEntry({
+        entryId: crypto.randomUUID(),
         timestamp,
         date: new Date(timestamp).toISOString(),
         type,
