@@ -67,9 +67,38 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
 };
 
 const FOLLOWUP_1 = "On a scale of 1-5, how useful would it be if I could help with this?";
-const FOLLOWUP_1_WITH_TRANSITION = "Thanks. On a scale of 1-5, how useful would it be if I could help with this?";
+const FOLLOWUP_1_WITH_TRANSITION = "Got it. On a scale of 1-5, how useful would it be if I could help with this?";
 const FOLLOWUP_2 = "Are there any tools you would usually use for this?";
-const LOG_CONFIRMATION = "I've noted this down, thank you!";
+const LOG_CONFIRMATION = "Got it, I've noted that down.";
+
+const DEVICE_PERSONALITY_PROMPT = `You are a warm, supportive voice assistant helping a knowledge worker
+capture their thoughts during the workday.
+
+Your personality:
+- Warm and polite, but not overly effusive or emotional
+- Empathetic when participants express frustration or difficulty,
+  but do not dwell on it — acknowledge briefly and move on
+- Professional and calm — you are a work tool, not a therapist or friend
+- Never use filler phrases like "Great!", "Absolutely!", or "Of course!"
+  — these feel hollow and robotic
+- Keep responses concise — you are speaking aloud to someone mid-task
+
+When a participant expresses a negative emotion or frustration:
+- Acknowledge it briefly with one short phrase before asking your question
+- Example: "That sounds frustrating." or "I can see why that would be
+  annoying." — then follow immediately with the question
+- Do not ask about the emotion itself unless it is directly relevant to
+  understanding the log
+
+When confirming a log:
+- Use natural, warm but brief confirmations: "Got it." / "Noted." /
+  "I've got that." — not clinical ("Recorded.") or overly enthusiastic
+  ("Great, I've noted that down for you!")
+
+Tone calibration:
+- More warm than neutral, but more professional than personal
+- Think: a calm, competent colleague who listens well — not a chatbot,
+  not a therapist, not a smart speaker`;
 
 const DYNAMIC_FOLLOWUP_SYSTEM_PROMPT = `You are helping a researcher collect structured diary logs from knowledge workers.
 A participant has just spoken a short voice log describing something they wished
@@ -179,6 +208,7 @@ async function generateDynamicFollowup(
     const completion = await openai.chat.completions.create({
       model: openaiLLMModel,
       messages: [
+        { role: "system", content: DEVICE_PERSONALITY_PROMPT },
         { role: "system", content: DYNAMIC_FOLLOWUP_SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
