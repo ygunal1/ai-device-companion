@@ -789,20 +789,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(noop);
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
 
-    ctx.logDynamicFollowupCount = 0;
     ctx.logLastDynamicFollowup = "";
-    ctx.logLastDynamicResponse = "";
 
     const recordFilePath = ctx.currentRecordFilePath;
     const startTime = Date.now();
-
-    const fallbackToFixed = () => {
-      if (ctx.currentFlowName !== "log_processing") return;
-      ctx.pendingLogResponseText = FOLLOWUP_1;
-      ctx.logTTSPreStarted = false;
-      ctx.logPlayEndPromise = null;
-      ctx.transitionTo("log_response");
-    };
 
     saveLogEntry({ audioPath: recordFilePath, timestamp: startTime, type: "log" })
       .then(async (transcript) => {
@@ -813,40 +803,31 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         console.log("[log_processing] dynamicQuestion:", dynamicQuestion);
         if (ctx.currentFlowName !== "log_processing") return;
         if (dynamicQuestion) {
-          ctx.logDynamicFollowupCount = 1;
           ctx.logLastDynamicFollowup = dynamicQuestion;
           ctx.pendingLogResponseText = dynamicQuestion;
-          ctx.logTTSPreStarted = false;
-          ctx.logPlayEndPromise = null;
           ctx.transitionTo("log_dynamic_followup_response");
         } else {
-          fallbackToFixed();
+          ctx.pendingLogResponseText = FOLLOWUP_1;
+          ctx.transitionTo("log_response");
         }
       })
       .catch((err) => {
         console.error("[log_processing] Error:", err);
-        fallbackToFixed();
+        if (ctx.currentFlowName === "log_processing") {
+          ctx.pendingLogResponseText = FOLLOWUP_1;
+          ctx.transitionTo("log_response");
+        }
       });
   },
   log_dynamic_followup_response: (ctx: ChatFlowContext) => {
-    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
-      ? ctx.logPlayEndPromise
-      : ctx.streamResponser.getPlayEndPromise();
-
+    ctx.streamResponser.stop();
     const question = ctx.pendingLogResponseText;
+    ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: question });
-
     onButtonPressed(noop);
     onButtonReleased(noop);
-
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(question);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.logPlayEndPromise = null;
-    ctx.pendingLogResponseText = "";
-
-    playEnd.then(() => {
+    void ctx.streamExternalReply(question);
+    ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_dynamic_followup_response") {
         ctx.transitionTo("log_dynamic_followup_wait");
       }
@@ -895,25 +876,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(async () => {
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        const responseTranscript = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: ctx.logLastDynamicFollowup });
-        ctx.logLastDynamicResponse = responseTranscript;
+        await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: ctx.logLastDynamicFollowup });
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        if (ctx.logDynamicFollowupCount < 2) {
-          const nextQuestion = await generateDynamicFollowup(ctx.logInitialTranscript, ctx.logLastDynamicFollowup, responseTranscript);
-          if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-          if (nextQuestion) {
-            ctx.logDynamicFollowupCount += 1;
-            ctx.logLastDynamicFollowup = nextQuestion;
-            ctx.pendingLogResponseText = nextQuestion;
-            ctx.logTTSPreStarted = false;
-            ctx.logPlayEndPromise = null;
-            ctx.transitionTo("log_dynamic_followup_response");
-            return;
-          }
-        }
         ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION;
-        ctx.logTTSPreStarted = false;
-        ctx.logPlayEndPromise = null;
         ctx.transitionTo("log_response");
       })
       .catch((err) => {
@@ -922,27 +887,17 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_response: (ctx: ChatFlowContext) => {
-    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
-      ? ctx.logPlayEndPromise
-      : ctx.streamResponser.getPlayEndPromise();
-
+    ctx.streamResponser.stop();
     const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1;
+    ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
-
     onButtonPressed(() => {
       ctx.streamResponser.stop();
       ctx.transitionTo("sleep");
     });
     onButtonReleased(noop);
-
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(followup1Text);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.logPlayEndPromise = null;
-    ctx.pendingLogResponseText = "";
-
-    playEnd.then(() => {
+    void ctx.streamExternalReply(followup1Text);
+    ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_response") {
         ctx.transitionTo("log_followup_wait");
       }
@@ -993,11 +948,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       onButtonReleased(noop);
       stop();
       setFace("answering");
-      ctx.pendingLogResponseText = FOLLOWUP_2;
-      ctx.logTTSPreStarted = true;
-      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
-      void ctx.streamExternalReply(FOLLOWUP_2);
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
     display({
@@ -1012,6 +963,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
         saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_1_WITH_TRANSITION });
+        ctx.pendingLogResponseText = FOLLOWUP_2;
         ctx.transitionTo("log_followup_response");
       })
       .catch((err) => {
@@ -1020,26 +972,17 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_followup_response: (ctx: ChatFlowContext) => {
-    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
-      ? ctx.logPlayEndPromise
-      : ctx.streamResponser.getPlayEndPromise();
-
-    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_2 });
-
+    ctx.streamResponser.stop();
+    const followup2Text = ctx.pendingLogResponseText || FOLLOWUP_2;
+    ctx.pendingLogResponseText = "";
+    display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup2Text });
     onButtonPressed(() => {
       ctx.streamResponser.stop();
       ctx.transitionTo("sleep");
     });
     onButtonReleased(noop);
-
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(FOLLOWUP_2);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.logPlayEndPromise = null;
-    ctx.pendingLogResponseText = "";
-
-    playEnd.then(() => {
+    void ctx.streamExternalReply(followup2Text);
+    ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_followup_response") {
         ctx.transitionTo("log_followup_2_wait");
       }
@@ -1090,11 +1033,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       onButtonReleased(noop);
       stop();
       setFace("answering");
-      ctx.pendingLogResponseText = LOG_CONFIRMATION;
-      ctx.logTTSPreStarted = true;
-      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
-      void ctx.streamExternalReply(LOG_CONFIRMATION);
+      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
     display({
@@ -1117,9 +1056,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_confirmation: (ctx: ChatFlowContext) => {
-    const playEnd = ctx.logTTSPreStarted && ctx.logPlayEndPromise
-      ? ctx.logPlayEndPromise
-      : ctx.streamResponser.getPlayEndPromise();
+    ctx.streamResponser.stop();
+    ctx.pendingLogResponseText = "";
 
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
 
@@ -1129,14 +1067,9 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
 
-    if (!ctx.logTTSPreStarted) {
-      void ctx.streamExternalReply(LOG_CONFIRMATION);
-    }
-    ctx.logTTSPreStarted = false;
-    ctx.logPlayEndPromise = null;
-    ctx.pendingLogResponseText = "";
+    void ctx.streamExternalReply(LOG_CONFIRMATION);
 
-    playEnd.then(() => {
+    ctx.streamResponser.getPlayEndPromise().then(() => {
       if (ctx.currentFlowName === "log_confirmation") {
         ctx.transitionTo("sleep");
       }
