@@ -899,19 +899,15 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
             ctx.logDynamicFollowupCount += 1;
             ctx.logLastDynamicFollowup = nextQuestion;
             ctx.pendingLogResponseText = nextQuestion;
-            ctx.logTTSPreStarted = true;
-            ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-            display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: nextQuestion });
-            void ctx.streamExternalReply(nextQuestion);
+            ctx.logTTSPreStarted = false;
+            ctx.logPlayEndPromise = null;
             ctx.transitionTo("log_dynamic_followup_response");
             return;
           }
         }
         ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION;
-        ctx.logTTSPreStarted = true;
-        ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-        display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1_WITH_TRANSITION });
-        void ctx.streamExternalReply(FOLLOWUP_1_WITH_TRANSITION);
+        ctx.logTTSPreStarted = false;
+        ctx.logPlayEndPromise = null;
         ctx.transitionTo("log_response");
       })
       .catch((err) => {
