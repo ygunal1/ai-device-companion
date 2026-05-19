@@ -82,6 +82,12 @@ if [ -f ".env" ]; then
   FASTER_WHISPER_MODEL_SIZE=$(get_env_value "FASTER_WHISPER_MODEL_SIZE")
   [ -n "$FASTER_WHISPER_MODEL_SIZE" ] && export FASTER_WHISPER_MODEL_SIZE
 
+  TRANSCRIPT_ENDPOINT=$(get_env_value "TRANSCRIPT_ENDPOINT")
+  [ -n "$TRANSCRIPT_ENDPOINT" ] && export TRANSCRIPT_ENDPOINT
+
+  TRANSCRIPT_API_KEY=$(get_env_value "TRANSCRIPT_API_KEY")
+  [ -n "$TRANSCRIPT_API_KEY" ] && export TRANSCRIPT_API_KEY
+
   echo ".env variables loaded."
 
   # check if SERVE_OLLAMA is set to true
