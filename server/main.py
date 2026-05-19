@@ -84,6 +84,8 @@ def init_db():
         if "entry_id" not in cols:
             conn.execute("ALTER TABLE logs ADD COLUMN entry_id TEXT")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_logs_entry_id ON logs(entry_id) WHERE entry_id IS NOT NULL")
+        if "log_type" not in cols:
+            conn.execute("ALTER TABLE logs ADD COLUMN log_type TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_dedup ON logs(device_id, type, transcript, timestamp)")
 
 
@@ -99,6 +101,7 @@ class LogEntry(BaseModel):
     timestamp: int
     date: str
     type: str
+    log_type: str = ""
     question: str = ""
     transcript: str
     participantId: str = ""
@@ -128,8 +131,8 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
 
         conn.execute(
             """INSERT OR IGNORE INTO logs
-               (received_at, timestamp, date, participant_id, device_id, type, question, transcript, entry_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (received_at, timestamp, date, participant_id, device_id, type, log_type, question, transcript, entry_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 datetime.utcnow().isoformat(),
                 entry.timestamp,
@@ -137,6 +140,7 @@ def receive_log(entry: LogEntry, _: str = Depends(require_api_key)):
                 entry.participantId,
                 entry.deviceId,
                 entry.type,
+                entry.log_type or None,
                 entry.question or None,
                 entry.transcript,
                 entry.entryId or None,
@@ -183,14 +187,14 @@ def export_csv(from_date: str = "", to_date: str = "", _: str = Depends(require_
     where = " AND ".join(filters)
     with get_db() as conn:
         rows = conn.execute(
-            f"""SELECT id, received_at, date, participant_id, device_id, type, question, transcript, deleted_at
+            f"""SELECT id, received_at, date, participant_id, device_id, type, log_type, question, transcript, deleted_at
                FROM logs WHERE {where} ORDER BY timestamp ASC""",
             params,
         ).fetchall()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "question", "transcript", "deleted_at"])
+    writer.writerow(["id", "received_at", "date", "participant_id", "device_id", "type", "log_type", "question", "transcript", "deleted_at"])
     for row in rows:
         writer.writerow(list(row))
 
