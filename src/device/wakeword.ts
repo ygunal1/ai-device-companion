@@ -16,7 +16,7 @@ export class WakeWordListener extends EventEmitter {
     if (enabled !== "true") return;
 
     const scriptPath = resolve(__dirname, "../../python/wakeword.py");
-    this.process = spawn(pythonBinary, [scriptPath], {
+    this.process = spawn("nice", ["-n", "15", pythonBinary, scriptPath], {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });

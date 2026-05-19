@@ -222,6 +222,13 @@ class ChatFlow implements ChatFlowContext {
     console.log(`[${getCurrentTimeTag()}] switch to:`, flowName);
     this.stateMachine.transitionTo(flowName);
     display({ text_input_enabled: flowName === "sleep" });
+    if (this.wakeWordListener) {
+      if (flowName === "log_listening") {
+        this.wakeWordListener.stop();
+      } else if (flowName === "sleep") {
+        setTimeout(() => this.wakeWordListener?.start(), 150);
+      }
+    }
   };
 
   isAnswerFlow = (): boolean => {
