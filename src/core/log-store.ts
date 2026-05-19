@@ -13,6 +13,7 @@ interface LogEntry {
   timestamp: number;
   date: string;
   type: "log" | "followup" | "eod";
+  log_type?: "TASK" | "THINKING" | "SOCIAL";
   question?: string;
   transcript: string;
   participantId: string;
@@ -93,9 +94,10 @@ export function saveLogEntry(params: {
   audioPath: string;
   timestamp: number;
   type?: "log" | "followup" | "eod";
+  log_type?: "TASK" | "THINKING" | "SOCIAL";
   question?: string;
 }): Promise<string> {
-  const { audioPath, timestamp, type = "log", question } = params;
+  const { audioPath, timestamp, type = "log", log_type, question } = params;
 
   const deleteAudio = () => {
     try { fs.unlinkSync(audioPath); } catch {}
@@ -108,6 +110,7 @@ export function saveLogEntry(params: {
         timestamp,
         date: new Date(timestamp).toISOString(),
         type,
+        ...(log_type ? { log_type } : {}),
         ...(question ? { question } : {}),
         transcript: transcript || "",
         participantId: PARTICIPANT_ID,

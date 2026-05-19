@@ -65,6 +65,7 @@ export interface ChatFlowContext {
   pendingLogResponseText: string;
   logInitialTranscript: string;
   logLastDynamicFollowup: string;
+  logLogType: "TASK" | "THINKING" | "SOCIAL";
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;

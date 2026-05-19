@@ -66,9 +66,23 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
   });
 };
 
-const FOLLOWUP_1 = "How useful would it be for me to handle something like this and why?";
-const FOLLOWUP_1_WITH_TRANSITION = "Got it. How useful would it be for me to handle something like this and why?";
-const FOLLOWUP_2 = "Are there any tools you would usually use for this?";
+type LogType = "TASK" | "THINKING" | "SOCIAL";
+
+const FOLLOWUP_1: Record<LogType, string> = {
+  TASK: "How useful would it be for me to handle something like this and why?",
+  THINKING: "How useful would it be to have someone to think this through with — and why?",
+  SOCIAL: "How useful would it have been to talk that through with someone — and why?",
+};
+const FOLLOWUP_1_WITH_TRANSITION: Record<LogType, string> = {
+  TASK: "Got it. How useful would it be for me to handle something like this and why?",
+  THINKING: "Got it. How useful would it be to have someone to think this through with — and why?",
+  SOCIAL: "Got it. How useful would it have been to talk that through with someone — and why?",
+};
+const FOLLOWUP_2: Record<LogType, string> = {
+  TASK: "Are there any tools you would usually use for this?",
+  THINKING: "Is this the kind of thing you'd normally talk through with a colleague or teammate?",
+  SOCIAL: "Is this something you'd normally talk through with someone, or tend to handle on your own?",
+};
 const LOG_CONFIRMATION = "Got it, I've noted that down.";
 
 const DEVICE_PERSONALITY_PROMPT = `You are a warm, supportive voice assistant helping a knowledge worker
@@ -100,192 +114,96 @@ Tone calibration:
 - Think: a calm, competent colleague who listens well — not a chatbot,
   not a therapist, not a smart speaker`;
 
-const DYNAMIC_FOLLOWUP_SYSTEM_PROMPT = `You are a warm, professional voice assistant helping a researcher collect
-structured diary logs from knowledge workers. A participant has just spoken
-a short voice log describing something they wished an AI agent could help
-them with during their workday.
+const DYNAMIC_FOLLOWUP_SYSTEM_PROMPT = `You are a warm, professional voice assistant helping a researcher collect structured
+diary logs from knowledge workers. A participant has just spoken a short voice log
+describing something they wished an AI agent could help them with during their workday.
 
 Your job is to generate ONE short follow-up question spoken aloud in natural
 conversational language, or return null if enough context already exists.
 
-IMPORTANT: You are generating a question to be SPOKEN ALOUD by a voice
-assistant. Never describe what you are doing (e.g. never say "I'll ask you"
-or "let me find out" or "which do you prefer"). Just ask the question
-directly as the assistant would speak it.
+---
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CORE EVALUATION — run this before anything else
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — CLASSIFY THE LOG
 
-A log has ENOUGH CONTEXT if a researcher can answer ALL of the following
-from the log and any previous responses combined:
-  - What the participant was doing or working on
-  - What specifically they wanted the agent to handle
-  - Whether other people are involved (if relevant)
+Before applying any rules, classify the log into one of three types:
 
-If all three are clear → return null.
+TASK — a concrete, delegatable request with a clear output
+  (summarizing, scheduling, finding, sending, reminding, formatting)
 
-A log has ENOUGH CONTEXT for an agent to act if:
-  - The agent could infer missing details from the participant's environment,
-    open files, active applications, calendar, or codebase
-  - Do NOT ask about programming language, platform, file type, meeting
-    details already in a calendar, or anything an agent could detect
-    automatically
+THINKING — open-ended, uncertain, or dialogic
+  (decisions, tradeoffs, being stuck, preparing for a conversation,
+  reasoning through a problem, reviewing an approach, architectural choices)
 
-After a follow-up has been answered, re-evaluate the FULL context including
-the original log AND all previous responses together. Do not search for new
-gaps introduced by the follow-up response itself. When combined context is
-sufficient → return null immediately.
+SOCIAL — navigating a relationship or interpersonal situation
+  (conflict, feedback, a difficult conversation, collaboration friction)
 
-When in doubt between asking and returning null → return null.
+---
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PRIORITY RULES — apply the first matching rule only
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — APPLY TYPE-SPECIFIC LOGIC
 
-1. INCOMPLETE OR CUT-OFF LOG
-   If the transcript appears to be cut off, incomplete, or does not form
-   a coherent thought (e.g. starts mid-sentence, ends abruptly, or is
-   too fragmented to interpret):
-   → Ask: "sorry, I didn't quite catch that — could you say that again?"
+If THINKING or SOCIAL → skip the priority rules below and ask one of the
+following, choosing whichever fits the log best:
 
-   This does NOT count as a dynamic follow-up. If the participant
-   responds, treat their response as the new transcript and restart
-   the full evaluation from rule 0. The 2 dynamic follow-up counter
-   does not increment for this rule.
+  - "What made this hard to think through on your own?"
+  - "Were you looking for information, a sounding board, or something else?"
+  - "What would a useful back-and-forth on this have looked like?"
+  - "What would the ideal next step have been if I could have responded?"
+  - [SOCIAL only] "What outcome were you hoping for in that situation?"
 
-   Signs a log may be cut off:
-   - Starts with a conjunction or mid-clause word with no prior context
-     (e.g. "and then", "but also", "because of the")
-   - Ends abruptly on a preposition, article, or mid-phrase
-     (e.g. "help me with the", "I need to send a")
-   - Contains fewer than 4 words with no clear standalone meaning
-   - Is phonetically garbled or contains nonsense transcription artifacts
+If TASK → apply the priority rules (first match wins):
 
-   Do NOT apply this rule if the log is short but complete and
-   interpretable (e.g. "take notes", "remind me later", "draft an email").
+  1. Cut-off/incomplete log → "sorry, I didn't quite catch that — could you
+     say that again?"
+  2. Unclear intent / no call to action → "how can I help with that?"
+  3. Reminders without timing → ask when/how often
+  4. Informational requests without detail level → ask quick summary or detailed
+  5. Contact without method → ask how they'd want to do that
+  6. Work context unclear → ask independent/collaborative/meeting context
+  7. Emotional expression → brief acknowledgement + "what's making it difficult?"
+  8. Noun-based log, usage unclear → ask about usage/specifics
+  9. Verb-based log, specifics missing → ask about timing/tools/scope
+  10. Recurring tasks/forgetting → null
+  11. Too short/vague → "can you tell me a bit more about what you had in mind?"
 
-2. UNCLEAR INTENT OR NO CALL TO ACTION
-   If the log is a statement, observation, or description with no clear
-   request or action for an agent to take:
-   → Ask: "how can I help with that?"
+---
 
-   Examples:
-   "my standup is in 10 minutes" → "how can I help with that?"
-   "I have a lot of emails" → "how can I help with that?"
-   "my code isn't working" → "how can I help with that?"
+STEP 3 — CONTEXT CHECK (TASK logs only)
 
-   Do NOT apply if the log contains a clear implicit request such as
-   "remind me", "take notes", "summarize", "draft", "notify me".
+A TASK log has enough context if a researcher can answer all of: what the
+participant was doing, what they wanted the agent to handle, and whether other
+people are involved. If all three are clear → null.
 
-3. REMINDERS AND NOTIFICATIONS
-   If the participant says "remind me", "notify me", "let me know",
-   "alert me", or similar without specifying when or how often:
-   → Ask when and how often they would want to be reminded.
+THINKING and SOCIAL logs should almost never return null from the dynamic
+follow-up — there is always something worth probing.
 
-   If they answer with any time or frequency reference → return null.
+---
 
-4. INFORMATIONAL REQUESTS
-   If the participant asks for information ("tell me about", "what is",
-   "explain", "describe", "how does") without indicating how much detail
-   they want:
-   → Ask whether they want a quick summary or a detailed overview.
+Hard limits: max 2 dynamic follow-ups per log, no yes/no questions, max 15 words,
+return only the question or null.
 
-   Do NOT apply to action requests that happen to involve information
-   (e.g. "summarize my emails", "take notes").
+---
 
-5. CONTACT OR COMMUNICATION WITHOUT METHOD
-   If the participant mentions checking in with, following up with,
-   contacting, or reaching out to a person or team without specifying
-   the communication method:
-   → Ask how they would want to do that.
+Static follow-ups (always asked after dynamic follow-ups):
 
-6. WORK CONTEXT UNCLEAR
-   If the participant mentions a specific task but it is unclear whether
-   they are working independently, collaborating with others, or in a
-   meeting:
-   → Ask which context they are in.
+  1. "Got it. How useful would it be for me to handle something like this and why?"
+  2. "Are there any tools you would usually use for this?"
+  3. Confirmation: "Got it, I've noted that down."
 
-   If working independently and their main goal is still unclear:
-   → Ask what their main task or goal is.
+Return ONLY a JSON object on a single line — nothing else:
+  {"dynamic_question": "<question or null>", "log_type": "<TASK|THINKING|SOCIAL>"}
 
-   If tools or systems are missing AND an agent could not infer them:
-   → Ask what tools or systems are involved.
+- dynamic_question: a single question in natural spoken language (max 15 words), or the JSON null value (not the string "null")
+- log_type: the classification from STEP 1
 
-7. EMOTIONAL EXPRESSIONS OR NEGATIVE OPINIONS
-   If the participant expresses frustration, annoyance, stress, or a
-   negative opinion ("annoying", "frustrated", "hate when", "so hard"):
-   → Acknowledge briefly with one short phrase, then ask why.
-
-   Acknowledgement examples:
-   "That sounds frustrating." / "I can see why that would be annoying."
-
-   Then ask: "what's making it difficult?"
-
-8. NOUN-BASED LOGS — usage, capabilities, or attributes unclear
-   If the key concept is a noun (a tool, document, system, person,
-   process) and it is unclear what the participant wanted done with it:
-   → Ask about its usage, what specifically they needed, or what
-     attribute matters.
-
-9. VERB-BASED LOGS — timing, tools, place, or degree unclear
-   If the key concept is a verb (an action: schedule, draft, summarize,
-   notify, review) and the specifics are missing:
-   → Ask about timing, the tools involved, where they are, or the
-     degree/scope of the action.
-
-10. RECURRING TASKS OR FORGETTING
-    If the participant mentions something they keep forgetting, a
-    recurring task, or something they repeatedly defer:
-    → return null. The reason for logging is already clear.
-
-11. LOG TOO SHORT OR VAGUE
-    If none of the above rules apply and the log is too short to extract
-    any clear intent:
-    → Ask: "can you tell me a bit more about what you had in mind?"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-HARD LIMITS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- Maximum 2 dynamic follow-ups per log entry
-- After 2 dynamic follow-ups → return null regardless of remaining gaps
-- Do NOT ask yes/no questions
-- Do NOT ask more than one question per turn
-- Do NOT describe what you are doing — speak the question directly
-- Do NOT use filler phrases: "Great!", "Sure!", "Of course!", "Absolutely!"
-- Do NOT ask about timing or urgency unless participant mentioned a
-  deadline or time pressure themselves
-- Do NOT repeat or rephrase what the participant already said
-- Do NOT ask about information an agent could detect from context
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NULL EXAMPLES — return null for all of these
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"I have a bug in my code in this file" → null (agent has file context)
-"Follow-up email to a client I keep forgetting" → null (intent clear)
-"I have a meeting and would like you to take notes" → null (clear request)
-"Remind me to check in with my team later today" → null (timing given)
-"remind me to check in" + response "we're on a text analytics project"
-  → null (do not probe the project further)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT FORMAT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Return ONLY one of the following — nothing else:
-  - A single question in natural spoken language, maximum 15 words
-  - The exact string: null
-
-Do not explain your reasoning. Do not return more than one question.`;
+Do not explain your reasoning. Do not return anything other than the JSON object.`;
 
 async function generateDynamicFollowup(
   transcript: string,
   previousFollowup: string,
   previousResponse: string
-): Promise<string | null> {
-  if (!openai) return null;
+): Promise<{ question: string | null; logType: LogType }> {
+  const fallback = { question: null, logType: "TASK" as LogType };
+  if (!openai) return fallback;
   const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"`;
   try {
     const completion = await openai.chat.completions.create({
@@ -294,23 +212,23 @@ async function generateDynamicFollowup(
         { role: "system", content: DYNAMIC_FOLLOWUP_SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
-      max_tokens: 60,
+      max_tokens: 100,
       temperature: 0.7,
     });
-    const raw = completion.choices[0]?.message?.content?.trim() || "null";
-    if (raw === "null" || !raw) return null;
-    // Strip surrounding quotes the LLM sometimes adds
-    let result = raw.replace(/^["']|["']$/g, "").trim();
-    if (!result) return null;
-    // Ensure only one question — take everything up to and including the first "?"
-    const firstQ = result.indexOf("?");
-    if (firstQ !== -1) {
-      result = result.slice(0, firstQ + 1).trim();
+    const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+    const parsed = JSON.parse(raw) as { dynamic_question?: string | null; log_type?: string };
+    const logType: LogType =
+      parsed.log_type === "THINKING" || parsed.log_type === "SOCIAL" ? parsed.log_type : "TASK";
+    let question = parsed.dynamic_question ?? null;
+    if (question) {
+      // Ensure only one question — take everything up to and including the first "?"
+      const firstQ = question.indexOf("?");
+      if (firstQ !== -1) question = question.slice(0, firstQ + 1).trim();
     }
-    return result;
+    return { question: question || null, logType };
   } catch (err) {
     console.error("[DynamicFollowup] LLM call failed:", err);
-    return null;
+    return fallback;
   }
 }
 
@@ -790,6 +708,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
 
     ctx.logLastDynamicFollowup = "";
+    ctx.logLogType = "TASK";
 
     const recordFilePath = ctx.currentRecordFilePath;
     const startTime = Date.now();
@@ -799,22 +718,23 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (ctx.currentFlowName !== "log_processing") return;
         ctx.logInitialTranscript = transcript;
         console.log("[log_processing] transcript:", transcript);
-        const dynamicQuestion = await generateDynamicFollowup(transcript, "", "");
-        console.log("[log_processing] dynamicQuestion:", dynamicQuestion);
+        const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "");
+        console.log("[log_processing] dynamicQuestion:", dynamicQuestion, "logType:", logType);
         if (ctx.currentFlowName !== "log_processing") return;
+        ctx.logLogType = logType;
         if (dynamicQuestion) {
           ctx.logLastDynamicFollowup = dynamicQuestion;
           ctx.pendingLogResponseText = dynamicQuestion;
           ctx.transitionTo("log_dynamic_followup_response");
         } else {
-          ctx.pendingLogResponseText = FOLLOWUP_1;
+          ctx.pendingLogResponseText = FOLLOWUP_1[logType];
           ctx.transitionTo("log_response");
         }
       })
       .catch((err) => {
         console.error("[log_processing] Error:", err);
         if (ctx.currentFlowName === "log_processing") {
-          ctx.pendingLogResponseText = FOLLOWUP_1;
+          ctx.pendingLogResponseText = FOLLOWUP_1[ctx.logLogType];
           ctx.transitionTo("log_response");
         }
       });
@@ -878,7 +798,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
         await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: ctx.logLastDynamicFollowup });
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION;
+        ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType];
         ctx.transitionTo("log_response");
       })
       .catch((err) => {
@@ -888,7 +808,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
-    const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1;
+    const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
     onButtonPressed(() => {
@@ -962,8 +882,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_1_WITH_TRANSITION });
-        ctx.pendingLogResponseText = FOLLOWUP_2;
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType] });
+        ctx.pendingLogResponseText = FOLLOWUP_2[ctx.logLogType];
         ctx.transitionTo("log_followup_response");
       })
       .catch((err) => {
@@ -973,7 +893,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_followup_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
-    const followup2Text = ctx.pendingLogResponseText || FOLLOWUP_2;
+    const followup2Text = ctx.pendingLogResponseText || FOLLOWUP_2[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup2Text });
     onButtonPressed(() => {
@@ -1047,7 +967,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_2_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_2 });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_2[ctx.logLogType] });
         ctx.transitionTo("log_confirmation");
       })
       .catch((err) => {
