@@ -68,7 +68,7 @@ def main():
     signal.signal(signal.SIGINT, cleanup)
 
     last_trigger = 0.0
-    chunk_samples = 1280
+    chunk_samples = 3840  # 240ms at 16kHz — reduces inference frequency vs default 80ms
     chunk_bytes = chunk_samples * 2
 
     print("[WakeWord] READY", flush=True)
