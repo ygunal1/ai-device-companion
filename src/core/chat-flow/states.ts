@@ -784,6 +784,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_processing: (ctx: ChatFlowContext) => {
+    ctx.streamResponser.stop();
     onButtonPressed(() => { ctx.transitionTo("sleep"); });
     onButtonReleased(noop);
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
