@@ -328,6 +328,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     onButtonPressed(() => {
+      if (longPressTimer) return; // debounce: ignore bounce if timer already running
       resetCameraModeControl();
       stopMusicPlayback();
       ctx.wakeWordListener?.stop();
