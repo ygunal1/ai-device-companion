@@ -1,4 +1,5 @@
 import { StreamResponser } from "../StreamResponsor";
+import { WakeWordListener } from "../../device/wakeword";
 
 export type FlowName =
   | "sleep"
@@ -60,6 +61,7 @@ export interface ChatFlowContext {
   isFromWakeListening: boolean;
   enterMusicAfterAnswer: boolean;
   musicDisplayText: string;
+  wakeWordListener: WakeWordListener | null;
   pendingLogResponseText: string;
   logTTSPreStarted: boolean;
   logPlayEndPromise: Promise<void> | null;
