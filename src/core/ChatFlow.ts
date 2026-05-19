@@ -57,12 +57,8 @@ class ChatFlow implements ChatFlowContext {
   enterMusicAfterAnswer: boolean = false;
   musicDisplayText: string = "";
   pendingLogResponseText: string = "";
-  logTTSPreStarted: boolean = false;
-  logPlayEndPromise: Promise<void> | null = null;
   logInitialTranscript: string = "";
-  logDynamicFollowupCount: number = 0;
   logLastDynamicFollowup: string = "";
-  logLastDynamicResponse: string = "";
   constructor(options: { enableCamera?: boolean } = {}) {
     console.log(`[${getCurrentTimeTag()}] ChatBot started.`);
     this.recordingsDir = recordingsDir;

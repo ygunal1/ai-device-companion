@@ -63,12 +63,8 @@ export interface ChatFlowContext {
   musicDisplayText: string;
   wakeWordListener: WakeWordListener | null;
   pendingLogResponseText: string;
-  logTTSPreStarted: boolean;
-  logPlayEndPromise: Promise<void> | null;
   logInitialTranscript: string;
-  logDynamicFollowupCount: number;
   logLastDynamicFollowup: string;
-  logLastDynamicResponse: string;
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;
