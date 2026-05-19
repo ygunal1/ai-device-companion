@@ -28,16 +28,19 @@ def main():
     print(f"[WakeWord] Using wake words: {wake_words}")
 
     try:
-        model = Model(wakeword_models=model_paths or wake_words, inference_framework="tflite")
+        model = Model(wakeword_models=model_paths or wake_words, inference_framework="onnx")
     except Exception as e:
         print(f"[WakeWord] Failed to initialize model: {e}", file=sys.stderr)
         sys.exit(1)
+
+    card_index = os.getenv("SOUND_CARD_INDEX", "").strip()
+    alsa_device = f"hw:{card_index},0" if card_index else "default"
 
     sox_cmd = [
         "sox",
         "-t",
         "alsa",
-        "default",
+        alsa_device,
         "-r",
         "16000",
         "-b",
@@ -68,7 +71,7 @@ def main():
     signal.signal(signal.SIGINT, cleanup)
 
     last_trigger = 0.0
-    chunk_samples = 3840  # 240ms at 16kHz — reduces inference frequency vs default 80ms
+    chunk_samples = 1280  # 80ms at 16kHz — OpenWakeWord's required chunk size
     chunk_bytes = chunk_samples * 2
 
     print("[WakeWord] READY", flush=True)
