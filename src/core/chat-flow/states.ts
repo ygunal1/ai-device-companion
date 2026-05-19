@@ -782,6 +782,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    setFace("listening");
+
     const { result, stop } = recordAudioManually(recordFilePath);
 
     onButtonReleased(() => {
@@ -796,7 +798,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(async () => {
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: ctx.logLastDynamicFollowup });
+        await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: ctx.logLastDynamicFollowup });
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
         ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType];
         ctx.transitionTo("log_response");
@@ -862,6 +864,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    setFace("listening");
+
     const { result, stop } = recordAudioManually(recordFilePath);
 
     onButtonReleased(() => {
@@ -882,7 +886,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType] });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType] });
         ctx.pendingLogResponseText = FOLLOWUP_2[ctx.logLogType];
         ctx.transitionTo("log_followup_response");
       })
@@ -930,7 +934,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     setTimeout(() => {
       if (ctx.currentFlowName === "log_followup_2_wait") {
-        ctx.transitionTo("sleep");
+        ctx.transitionTo("log_confirmation");
       }
     }, FOLLOWUP_WAIT_TIMEOUT_MS);
   },
@@ -946,6 +950,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       ctx.transitionTo("log_followup_2_wait");
       return;
     }
+
+    setFace("listening");
 
     const { result, stop } = recordAudioManually(recordFilePath);
 
@@ -967,12 +973,12 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(() => {
         if (ctx.currentFlowName !== "log_followup_2_listening") return;
-        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", question: FOLLOWUP_2[ctx.logLogType] });
+        saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: FOLLOWUP_2[ctx.logLogType] });
         ctx.transitionTo("log_confirmation");
       })
       .catch((err) => {
         console.error("[log_followup_2_listening] Recording error:", err);
-        ctx.transitionTo("sleep");
+        ctx.transitionTo("log_confirmation");
       });
   },
   log_confirmation: (ctx: ChatFlowContext) => {
