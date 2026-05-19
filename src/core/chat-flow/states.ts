@@ -300,8 +300,13 @@ async function generateDynamicFollowup(
     const raw = completion.choices[0]?.message?.content?.trim() || "null";
     if (raw === "null" || !raw) return null;
     // Strip surrounding quotes the LLM sometimes adds
-    const result = raw.replace(/^["']|["']$/g, "").trim();
+    let result = raw.replace(/^["']|["']$/g, "").trim();
     if (!result) return null;
+    // Ensure only one question — take everything up to and including the first "?"
+    const firstQ = result.indexOf("?");
+    if (firstQ !== -1) {
+      result = result.slice(0, firstQ + 1).trim();
+    }
     return result;
   } catch (err) {
     console.error("[DynamicFollowup] LLM call failed:", err);
@@ -793,10 +798,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const fallbackToFixed = () => {
       if (ctx.currentFlowName !== "log_processing") return;
       ctx.pendingLogResponseText = FOLLOWUP_1;
-      ctx.logTTSPreStarted = true;
-      ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-      display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: FOLLOWUP_1 });
-      void ctx.streamExternalReply(FOLLOWUP_1);
+      ctx.logTTSPreStarted = false;
+      ctx.logPlayEndPromise = null;
       ctx.transitionTo("log_response");
     };
 
@@ -812,10 +815,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           ctx.logDynamicFollowupCount = 1;
           ctx.logLastDynamicFollowup = dynamicQuestion;
           ctx.pendingLogResponseText = dynamicQuestion;
-          ctx.logTTSPreStarted = true;
-          ctx.logPlayEndPromise = ctx.streamResponser.getPlayEndPromise();
-          display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: dynamicQuestion });
-          void ctx.streamExternalReply(dynamicQuestion);
+          ctx.logTTSPreStarted = false;
+          ctx.logPlayEndPromise = null;
           ctx.transitionTo("log_dynamic_followup_response");
         } else {
           fallbackToFixed();
