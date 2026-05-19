@@ -263,6 +263,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonPressed(() => {
       resetCameraModeControl();
       stopMusicPlayback();
+      ctx.wakeWordListener?.stop();
       setFace("listening");
       display({ status: "listening", text: "Listening...", RGB: "#00aa44" });
       longPressTimer = setTimeout(() => {
