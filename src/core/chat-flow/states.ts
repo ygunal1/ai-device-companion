@@ -784,6 +784,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       });
   },
   log_processing: (ctx: ChatFlowContext) => {
+    ctx.streamResponser.stop();
     onButtonPressed(() => { ctx.transitionTo("sleep"); });
     onButtonReleased(noop);
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
@@ -855,7 +856,11 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     setFace("idle");
     onButtonDoubleClick(null);
     display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer...", rag_icon_visible: false });
-    onButtonPressed(() => { ctx.transitionTo("log_dynamic_followup_listening"); });
+    onButtonPressed(() => {
+      setFace("listening");
+      display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
+      ctx.transitionTo("log_dynamic_followup_listening");
+    });
     onButtonReleased(noop);
     setTimeout(() => {
       if (ctx.currentFlowName === "log_dynamic_followup_wait") {
@@ -956,6 +961,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonPressed(() => {
+      setFace("listening");
+      display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
       ctx.transitionTo("log_followup_listening");
     });
 
@@ -1051,6 +1058,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
 
     onButtonPressed(() => {
+      setFace("listening");
+      display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
       ctx.transitionTo("log_followup_2_listening");
     });
 
