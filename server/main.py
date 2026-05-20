@@ -234,7 +234,6 @@ def my_data_page():
     th { background: #f5f5f5; }
     .empty { color: #888; font-style: italic; }
     .del-entry { background: #cc2200; color: white; font-size: 0.8rem; padding: 4px 10px; margin-left: 0; }
-    .del-all { background: #7a0000; color: white; margin-top: 16px; }
     .error { color: #cc2200; margin-top: 12px; }
   </style>
 </head>
@@ -297,7 +296,6 @@ def my_data_page():
         html += "</tr>";
       }
       html += "</table>";
-      html += "<br><button class='del-all' onclick='deleteAll()'>Delete all my entries</button>";
       result.innerHTML = html;
     }
 
@@ -316,15 +314,6 @@ def my_data_page():
       }
     }
 
-    async function deleteAll() {
-      if (!confirm("Remove all entries for " + currentPid + "? This cannot be undone.")) return;
-      const res = await fetch("/my-data/" + encodeURIComponent(currentPid) + authParams(), { method: "DELETE" });
-      if (res.ok) {
-        document.getElementById("result").innerHTML = "<p>All entries for <strong>" + currentPid + "</strong> have been removed from your view.</p>";
-      } else {
-        alert("Could not delete entries. Please try again.");
-      }
-    }
   </script>
 </body>
 </html>"""
