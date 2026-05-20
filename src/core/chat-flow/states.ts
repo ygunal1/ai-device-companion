@@ -1026,6 +1026,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
     onButtonDoubleClick(null);
 
     display({
@@ -1041,6 +1042,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonPressed(() => {
       skipTimer = setTimeout(() => {
         skipTimer = null;
+        setFace("listening");
+        display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
         ctx.transitionTo("eod_listening");
       }, 500);
     });
@@ -1063,6 +1066,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   eod_listening: (ctx: ChatFlowContext) => {
     ctx.answerId += 1;
+    ctx.logLogType = "TASK";
+    ctx.logLastDynamicFollowup = "";
     const recordFilePath = `${ctx.recordingsDir}/eod-${Date.now()}.${recordFileFormat}`;
     ctx.currentRecordFilePath = recordFilePath;
 
@@ -1074,11 +1079,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    setFace("listening");
+
     const { result, stop } = recordAudioManually(recordFilePath);
 
     onButtonReleased(() => {
       stop();
-      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
+      setFace("answering");
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
     display({
@@ -1089,9 +1097,98 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
     });
 
-    result.then(() => {
+    result.then(async () => {
       if (ctx.currentFlowName !== "eod_listening") return;
-      saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
+      const transcript = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
+      if (ctx.currentFlowName !== "eod_listening") return;
+      const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "");
+      if (ctx.currentFlowName !== "eod_listening") return;
+      ctx.logLogType = logType;
+      if (dynamicQuestion) {
+        ctx.logLastDynamicFollowup = dynamicQuestion;
+        ctx.pendingLogResponseText = dynamicQuestion;
+        ctx.transitionTo("eod_dynamic_followup_response");
+      } else {
+        ctx.transitionTo("eod_followup_1");
+      }
+    }).catch(() => ctx.transitionTo("sleep"));
+  },
+
+  eod_dynamic_followup_response: (ctx: ChatFlowContext) => {
+    ctx.streamResponser.stop();
+    const question = ctx.pendingLogResponseText;
+    ctx.pendingLogResponseText = "";
+    display({ status: "quick question", emoji: "", RGB: "#ff9900", text: question });
+    onButtonPressed(noop);
+    onButtonReleased(noop);
+    void ctx.streamExternalReply(question);
+    ctx.streamResponser.getPlayEndPromise().then(() => {
+      if (ctx.currentFlowName === "eod_dynamic_followup_response") {
+        ctx.transitionTo("eod_dynamic_followup_wait");
+      }
+    });
+  },
+
+  eod_dynamic_followup_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
+    onButtonDoubleClick(null);
+    display({ status: "quick question", emoji: "", RGB: "#331a00", text: "Hold to respond, or press briefly to skip.", rag_icon_visible: false });
+
+    let skipTimer: NodeJS.Timeout | null = null;
+
+    onButtonPressed(() => {
+      skipTimer = setTimeout(() => {
+        skipTimer = null;
+        setFace("listening");
+        display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
+        ctx.transitionTo("eod_dynamic_followup_listening");
+      }, 500);
+    });
+
+    onButtonReleased(() => {
+      if (skipTimer) {
+        clearTimeout(skipTimer);
+        skipTimer = null;
+        ctx.transitionTo("eod_followup_1");
+      }
+    });
+
+    setTimeout(() => {
+      if (ctx.currentFlowName === "eod_dynamic_followup_wait") {
+        ctx.transitionTo("eod_followup_1");
+      }
+    }, FOLLOWUP_WAIT_TIMEOUT_MS);
+  },
+
+  eod_dynamic_followup_listening: (ctx: ChatFlowContext) => {
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/eod-dynamic-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(noop);
+
+    if (!isButtonDown()) {
+      ctx.transitionTo("eod_dynamic_followup_wait");
+      return;
+    }
+
+    setFace("listening");
+
+    const { result, stop } = recordAudioManually(recordFilePath);
+
+    onButtonReleased(() => {
+      stop();
+      setFace("answering");
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
+    });
+
+    display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
+
+    result.then(async () => {
+      if (ctx.currentFlowName !== "eod_dynamic_followup_listening") return;
+      await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod", question: ctx.logLastDynamicFollowup });
+      if (ctx.currentFlowName !== "eod_dynamic_followup_listening") return;
       ctx.transitionTo("eod_followup_1");
     }).catch(() => ctx.transitionTo("sleep"));
   },
@@ -1115,6 +1212,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
     onButtonDoubleClick(null);
 
     display({
@@ -1130,6 +1228,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonPressed(() => {
       skipTimer = setTimeout(() => {
         skipTimer = null;
+        setFace("listening");
+        display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
         ctx.transitionTo("eod_followup_listening");
       }, 500);
     });
@@ -1162,11 +1262,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    setFace("listening");
+
     const { result, stop } = recordAudioManually(recordFilePath);
 
     onButtonReleased(() => {
       stop();
-      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
+      setFace("answering");
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
     display({
@@ -1203,6 +1306,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_2_wait: (ctx: ChatFlowContext) => {
+    setFace("idle");
     onButtonDoubleClick(null);
 
     display({
@@ -1218,6 +1322,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonPressed(() => {
       skipTimer = setTimeout(() => {
         skipTimer = null;
+        setFace("listening");
+        display({ status: "listening", emoji: "", RGB: "#00ff00", text: "Listening...", rag_icon_visible: false });
         ctx.transitionTo("eod_followup_2_listening");
       }, 500);
     });
@@ -1250,11 +1356,14 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       return;
     }
 
+    setFace("listening");
+
     const { result, stop } = recordAudioManually(recordFilePath);
 
     onButtonReleased(() => {
       stop();
-      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
+      setFace("answering");
+      display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
     display({
