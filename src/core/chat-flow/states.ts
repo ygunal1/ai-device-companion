@@ -722,6 +722,40 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     });
     onButtonReleased(noop);
   },
+  wake_log_listening: (ctx: ChatFlowContext) => {
+    setFace("listening");
+    ctx.answerId += 1;
+    const recordFilePath = `${ctx.recordingsDir}/log-${Date.now()}.${recordFileFormat}`;
+    ctx.currentRecordFilePath = recordFilePath;
+
+    onButtonDoubleClick(null);
+    onButtonPressed(() => {
+      ctx.transitionTo("sleep");
+    });
+    onButtonReleased(noop);
+
+    display({
+      status: "listening",
+      emoji: "",
+      RGB: "#00ff00",
+      text: "Listening...",
+      rag_icon_visible: false,
+    });
+
+    getDynamicVoiceDetectLevel().then((level) => {
+      recordAudio(recordFilePath, ctx.wakeRecordMaxSec, level)
+        .then(() => {
+          if (ctx.currentFlowName !== "wake_log_listening") return;
+          setFace("answering");
+          display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
+          ctx.transitionTo("log_processing");
+        })
+        .catch((err) => {
+          console.error("[wake_log_listening] Recording error:", err);
+          if (ctx.currentFlowName === "wake_log_listening") ctx.transitionTo("sleep");
+        });
+    });
+  },
   log_listening: (ctx: ChatFlowContext) => {
     ctx.answerId += 1;
     const recordFilePath = `${ctx.recordingsDir}/log-${Date.now()}.${recordFileFormat}`;

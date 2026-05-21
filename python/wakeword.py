@@ -54,10 +54,11 @@ def main():
         "-",
     ]
 
+    print(f"[WakeWord] sox command: {' '.join(sox_cmd)}", flush=True)
     process = subprocess.Popen(
         sox_cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=sys.stderr,
     )
 
     def cleanup(*_):
@@ -77,6 +78,9 @@ def main():
     print("[WakeWord] READY", flush=True)
 
     while True:
+        if process.poll() is not None:
+            print(f"[WakeWord] sox exited with code {process.returncode}", file=sys.stderr, flush=True)
+            sys.exit(1)
         if process.stdout is None:
             time.sleep(0.1)
             continue

@@ -11,6 +11,7 @@ export type FlowName =
   | "answer"
   | "image"
   | "external_answer"
+  | "wake_log_listening"
   | "log_listening"
   | "log_processing"
   | "log_response"

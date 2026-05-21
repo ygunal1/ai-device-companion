@@ -9,12 +9,15 @@ const pythonBinary = process.env.WAKE_WORD_PYTHON_PATH || "python3";
 export class WakeWordListener extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer: string = "";
+  private startTimer: NodeJS.Timeout | null = null;
+  private active: boolean = false;
 
   start(): void {
     if (this.process) return;
     const enabled = (process.env.WAKE_WORD_ENABLED || "").toLowerCase();
     if (enabled !== "true") return;
 
+    this.active = true;
     const scriptPath = resolve(__dirname, "../../python/wakeword.py");
     this.process = spawn("nice", ["-n", "15", pythonBinary, scriptPath], {
       env: process.env,
@@ -28,7 +31,7 @@ export class WakeWordListener extends EventEmitter {
         const line = this.buffer.slice(0, newlineIndex).trim();
         this.buffer = this.buffer.slice(newlineIndex + 1);
         if (line.startsWith("WAKE")) {
-          this.emit("wake", line);
+          if (this.active) this.emit("wake", line);
         } else if (line) {
           console.log(`[WakeWord] ${line}`);
         }
@@ -49,7 +52,20 @@ export class WakeWordListener extends EventEmitter {
     });
   }
 
+  scheduleStart(delayMs: number): void {
+    if (this.startTimer) clearTimeout(this.startTimer);
+    this.startTimer = setTimeout(() => {
+      this.startTimer = null;
+      this.start();
+    }, delayMs);
+  }
+
   stop(): void {
+    this.active = false;
+    if (this.startTimer) {
+      clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
     if (!this.process) return;
     this.process.kill("SIGTERM");
     this.process = null;

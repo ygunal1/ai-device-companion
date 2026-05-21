@@ -42,7 +42,7 @@ class ChatFlow implements ChatFlowContext {
   wakeRecordMaxSec: number = parseInt(
     process.env.WAKE_WORD_RECORD_MAX_SEC || "60",
   );
-  wakeEndKeywords: string[] = (process.env.WAKE_WORD_END_KEYWORDS || "byebye,goodbye,stop,byebye").toLowerCase()
+  wakeEndKeywords: string[] = (process.env.WAKE_WORD_END_KEYWORDS || "bye bye,byebye,goodbye,stop").toLowerCase()
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter((item) => item.length > 0);
@@ -113,7 +113,9 @@ class ChatFlow implements ChatFlowContext {
       this.wakeWordListener = new WakeWordListener();
       this.wakeWordListener.on("wake", () => {
         if (this.currentFlowName === "sleep") {
-          this.transitionTo("log_listening");
+          this.wakeWordListener?.stop();
+          playWakeupChime();
+          this.transitionTo("wake_log_listening");
         }
       });
       this.wakeWordListener.start();
@@ -220,7 +222,7 @@ class ChatFlow implements ChatFlowContext {
     this.stateMachine.transitionTo(flowName);
     display({ text_input_enabled: flowName === "sleep" });
     if (this.wakeWordListener && flowName === "sleep") {
-      setTimeout(() => this.wakeWordListener?.start(), 150);
+      this.wakeWordListener.scheduleStart(150);
     }
   };
 
