@@ -802,6 +802,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     saveLogEntry({ audioPath: recordFilePath, timestamp: startTime, type: "log" })
       .then(async (transcript) => {
         if (ctx.currentFlowName !== "log_processing") return;
+        display({ last_log_at: startTime });
         ctx.logInitialTranscript = transcript;
         console.log("[log_processing] transcript:", transcript);
         const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "");

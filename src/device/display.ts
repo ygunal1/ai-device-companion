@@ -40,6 +40,7 @@ export interface Status {
   image_icon_visible: boolean;
   music_progress: number | undefined;
   music_duration_ms: number | undefined;
+  last_log_at?: number;
 }
 
 export class WhisplayDisplay {
@@ -434,6 +435,7 @@ export class WhisplayDisplay {
       image_icon_visible,
       music_progress,
       music_duration_ms,
+      last_log_at,
     } = {
       ...this.currentStatus,
       ...normalizedStatus,
@@ -463,6 +465,7 @@ export class WhisplayDisplay {
     this.currentStatus.image_icon_visible = image_icon_visible;
     this.currentStatus.music_progress = music_progress;
     this.currentStatus.music_duration_ms = music_duration_ms;
+    this.currentStatus.last_log_at = last_log_at;
 
     const changedValuesObj = Object.fromEntries(changedValues);
     changedValuesObj.brightness = 100;

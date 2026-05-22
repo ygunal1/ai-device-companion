@@ -32,10 +32,14 @@ FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening_white_4.png")
 FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering_white_1.png")
 face_state = "idle"   # "idle" | "listening" | "speaking"
 button_is_down = False  # tracks physical button state to guard stale idle transitions
+
+FACE_IDLE_WAITING = os.path.join(_ASSETS_DIR, "idle_waiting_2.png")
+IDLE_WAITING_THRESHOLD_S = 3 * 3600   # 3 hours without a log → show waiting face
+last_log_time = time.time()            # reset each time a log entry is saved
 _face_rgb565_cache: dict = {}  # keyed by (face_path, label, w, h)
 
 # Keep legacy helpers so nothing else breaks
-FACE_FILENAMES = {"idle_white.png", "listening_white_4.png", "answering_white_1.png"}
+FACE_FILENAMES = {"idle_white.png", "listening_white_4.png", "answering_white_1.png", "idle_waiting_2.png"}
 _face_image_cache = {}
 
 def is_face_image(path):
@@ -137,9 +141,12 @@ class RenderThread(threading.Thread):
             face_path = FACE_ANSWERING
         elif face_state == "listening":
             face_path = FACE_LISTENING
+        elif time.time() - last_log_time > IDLE_WAITING_THRESHOLD_S:
+            face_path = FACE_IDLE_WAITING
         else:
             face_path = FACE_IDLE
-        label_text = {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
+        is_waiting = (face_state == "idle" and time.time() - last_log_time > IDLE_WAITING_THRESHOLD_S)
+        label_text = "waiting" if is_waiting else {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
         cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
             try:
@@ -468,7 +475,7 @@ def update_display_data(status=None, emoji=None, text=None,
                   scroll_speed=None, scroll_sync=None, battery_level=None, battery_color=None, image_path=None,
                   network_connected=None, vpn_connected=None, rag_icon_visible=None, image_icon_visible=None, transaction_id=None,
                   wifi_signal_level=None,
-                  music_progress=None, music_duration_ms=None):
+                  music_progress=None, music_duration_ms=None, last_log_at=None):
     global current_status, current_emoji, current_text, current_battery_level
     global current_battery_color, current_scroll_top, current_scroll_speed, current_image_path
     global current_scroll_sync_char_end, current_scroll_sync_duration_ms
@@ -480,6 +487,7 @@ def update_display_data(status=None, emoji=None, text=None,
     global render_thread
     global current_image  # needed to clear cache on path change
     global face_state, button_is_down
+    global last_log_time
 
     next_text = text
     if text is not None:
@@ -551,6 +559,9 @@ def update_display_data(status=None, emoji=None, text=None,
         current_image_icon_visible = image_icon_visible
     if transaction_id is not None:
         current_transaction_id = transaction_id
+    if last_log_at is not None:
+        last_log_time = time.time()
+        print(f"[IdleWatcher] Log saved — reset idle-waiting timer", flush=True)
     if status is not None and status.startswith("answering"):
         face_state = "speaking"
     elif status == "listening":
@@ -659,6 +670,7 @@ def handle_client(client_socket, addr, whisplay):
                     image_icon_visible = content.get("image_icon_visible", None)
                     music_progress = content.get("music_progress", None)
                     music_duration_ms = content.get("music_duration_ms", None)
+                    last_log_at = content.get("last_log_at", None)
                     capture_image_path = content.get("capture_image_path", None)
                     trigger_camera_capture = content.get("camera_capture", None)
                     set_camera_mode = content.get("camera_mode", None)
@@ -706,7 +718,8 @@ def handle_client(client_socket, addr, whisplay):
                             (wifi_signal_level is not None) or \
                             (vpn_connected is not None) or \
                             (rag_icon_visible is not None) or (image_icon_visible is not None) or (scroll_sync is not None) or \
-                            (music_progress is not None) or (music_duration_ms is not None):
+                            (music_progress is not None) or (music_duration_ms is not None) or \
+                            (last_log_at is not None):
                         update_display_data(status=status, emoji=emoji,
                                      text=text, scroll_speed=scroll_speed, scroll_sync=scroll_sync,
                                      battery_level=battery_level, battery_color=battery_tuple,
@@ -717,7 +730,8 @@ def handle_client(client_socket, addr, whisplay):
                                          image_icon_visible=image_icon_visible,
                                                  transaction_id=transaction_id,
                                                  music_progress=music_progress,
-                                                 music_duration_ms=music_duration_ms)
+                                                 music_duration_ms=music_duration_ms,
+                                                 last_log_at=last_log_at)
 
                     client_socket.send(b"OK\n")
                     if response_to_client:
@@ -764,6 +778,17 @@ def start_socket_server(render_thread, host='0.0.0.0', port=12345):
     finally:
         render_thread.stop()
         server_socket.close()
+
+
+def _idle_waiting_watcher():
+    """Re-render every 5 minutes so the idle→waiting face transition fires on time."""
+    while True:
+        time.sleep(300)
+        if face_state == "idle" and render_thread is not None:
+            render_thread.request_render()
+
+_idle_watcher_thread = threading.Thread(target=_idle_waiting_watcher, daemon=True)
+_idle_watcher_thread.start()
 
 
 if __name__ == "__main__":
