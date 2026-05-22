@@ -27,14 +27,15 @@ scroll_stop_event = threading.Event()
 
 # Face images — driven by Python button state, not Node.js image path
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
-FACE_IDLE = os.path.join(_ASSETS_DIR, "idle.png")
-FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening.png")
-FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering.png")
+FACE_IDLE = os.path.join(_ASSETS_DIR, "idle_white.png")
+FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening_white_4.png")
+FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering_white_1.png")
 face_state = "idle"   # "idle" | "listening" | "speaking"
+button_is_down = False  # tracks physical button state to guard stale idle transitions
 _face_rgb565_cache: dict = {}  # keyed by (face_path, label, w, h)
 
 # Keep legacy helpers so nothing else breaks
-FACE_FILENAMES = {"idle.png", "listening.png", "answering.png"}
+FACE_FILENAMES = {"idle_white.png", "listening_white_4.png", "answering_white_1.png"}
 _face_image_cache = {}
 
 def is_face_image(path):
@@ -478,7 +479,7 @@ def update_display_data(status=None, emoji=None, text=None,
     global current_music_progress, current_music_duration_ms
     global render_thread
     global current_image  # needed to clear cache on path change
-    global face_state
+    global face_state, button_is_down
 
     next_text = text
     if text is not None:
@@ -552,7 +553,9 @@ def update_display_data(status=None, emoji=None, text=None,
         current_transaction_id = transaction_id
     if status is not None and status.startswith("answering"):
         face_state = "speaking"
-    elif status == "idle" and face_state in ("speaking", "listening"):
+    elif status == "listening":
+        face_state = "listening"
+    elif status == "idle" and face_state in ("speaking", "listening") and not button_is_down:
         face_state = "idle"
     current_status = status if status is not None else current_status
     current_emoji = emoji if emoji is not None else current_emoji
@@ -601,7 +604,8 @@ def exit_camera_mode():
         render_thread.request_render()
 
 def on_button_pressed():
-    global face_state
+    global face_state, button_is_down
+    button_is_down = True
     face_state = "listening"
     if render_thread is not None:
         render_thread.request_render()
@@ -609,6 +613,8 @@ def on_button_pressed():
     send_to_all_clients({"event": "button_pressed"})
 
 def on_button_release():
+    global button_is_down
+    button_is_down = False
     # Don't set face_state here — let Node.js status updates drive the transition
     if render_thread is not None:
         render_thread.request_render()
