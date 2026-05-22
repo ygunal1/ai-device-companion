@@ -882,7 +882,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
     onButtonPressed(() => {
       ctx.streamResponser.stop();
-      ctx.transitionTo("sleep");
+      ctx.transitionTo("log_followup_wait");
     });
     onButtonReleased(noop);
     void ctx.streamExternalReply(followup1Text);
@@ -967,7 +967,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup2Text });
     onButtonPressed(() => {
       ctx.streamResponser.stop();
-      ctx.transitionTo("sleep");
+      ctx.transitionTo("log_followup_2_wait");
     });
     onButtonReleased(noop);
     void ctx.streamExternalReply(followup2Text);
