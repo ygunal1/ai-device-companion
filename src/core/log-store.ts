@@ -13,7 +13,7 @@ interface LogEntry {
   timestamp: number;
   date: string;
   type: "log" | "followup" | "eod";
-  log_type?: "TASK" | "THINKING" | "SOCIAL" | "REFLECTION";
+  log_type?: "TASK-A" | "TASK-B" | "THINKING-A" | "THINKING-B" | "SOCIAL" | "REFLECTION";
   question?: string;
   transcript: string;
   participantId: string;
@@ -94,7 +94,7 @@ export function saveLogEntry(params: {
   audioPath: string;
   timestamp: number;
   type?: "log" | "followup" | "eod";
-  log_type?: "TASK" | "THINKING" | "SOCIAL" | "REFLECTION";
+  log_type?: "TASK-A" | "TASK-B" | "THINKING-A" | "THINKING-B" | "SOCIAL" | "REFLECTION";
   question?: string;
 }): Promise<string> {
   const { audioPath, timestamp, type = "log", log_type, question } = params;

@@ -66,23 +66,29 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
   });
 };
 
-type LogType = "TASK" | "THINKING" | "SOCIAL" | "REFLECTION";
+type LogType = "TASK-A" | "TASK-B" | "THINKING-A" | "THINKING-B" | "SOCIAL" | "REFLECTION";
 
 const FOLLOWUP_1: Record<LogType, string> = {
-  TASK: "How useful would it be for me to handle something like this, and why?",
-  THINKING: "How useful would it be to have someone to think this through with, and why?",
-  SOCIAL: "How useful would it be for me to handle something like this, and why?",
-  REFLECTION: "How useful would it be for me to handle something like this, and why?",
+  "TASK-A": "Got it. How useful would it be for me to handle something like this, and why?",
+  "TASK-B": "Got it. How useful would it be for me to handle something like this, and why?",
+  "THINKING-A": "Got it. How useful would it be for me to help with something like this, and why?",
+  "THINKING-B": "Got it. How useful would it be for me to help with something like this, and why?",
+  SOCIAL: "Got it. How useful would it be for me to help with something like this, and why?",
+  REFLECTION: "Got it. How useful would it be for me to help with something like this, and why?",
 };
 const FOLLOWUP_1_WITH_TRANSITION: Record<LogType, string> = {
-  TASK: "Got it. How useful would it be for me to handle something like this, and why?",
-  THINKING: "Got it. How useful would it be to have someone to think this through with, and why?",
-  SOCIAL: "Got it. How useful would it be for me to handle something like this, and why?",
-  REFLECTION: "Got it. How useful would it be for me to handle something like this, and why?",
+  "TASK-A": "Got it. How useful would it be for me to handle something like this, and why?",
+  "TASK-B": "Got it. How useful would it be for me to handle something like this, and why?",
+  "THINKING-A": "Got it. How useful would it be for me to help with something like this, and why?",
+  "THINKING-B": "Got it. How useful would it be for me to help with something like this, and why?",
+  SOCIAL: "Got it. How useful would it be for me to help with something like this, and why?",
+  REFLECTION: "Got it. How useful would it be for me to help with something like this, and why?",
 };
 const FOLLOWUP_2: Record<LogType, string> = {
-  TASK: "Are there any tools you would usually use for this?",
-  THINKING: "Is this the kind of thing you'd normally talk through with a colleague or teammate?",
+  "TASK-A": "Are there any tools you'd normally use for this?",
+  "TASK-B": "Are there any tools you'd normally use for this?",
+  "THINKING-A": "If I could have responded in the moment — what would the most useful thing I could have said or done been?",
+  "THINKING-B": "If I could have responded in the moment — what would the most useful thing I could have said or done been?",
   SOCIAL: "If I could have responded in the moment — what would the most useful thing I could have said or done been?",
   REFLECTION: "If I could have responded in the moment — what would the most useful thing I could have said or done been?",
 };
@@ -125,131 +131,123 @@ them with during their workday.
 Your job is to generate ONE short follow-up question spoken aloud in natural
 conversational language, or return null if enough context already exists.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 1 — CLASSIFY THE LOG
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Classify into one of four types:
+Classify into one of six types:
 
-TASK — concrete, delegatable, clear output (summarizing, scheduling,
-finding, sending, reminding, formatting, notifying)
+TASK-A — concrete, delegatable request where context (people, tools,
+platform, timing) can be inferred from the work environment. No
+follow-up needed on those details.
+Examples: "find the PR that introduced this bug", "summarize issue 847",
+"remind me before my next meeting", "run the tests before I push"
 
-THINKING — open-ended, uncertain, or dialogic (decisions, tradeoffs,
-being stuck, preparing for a conversation, reasoning through a problem,
-reviewing an approach, architectural choices)
+TASK-B — concrete, delegatable request that involves other people,
+external deadlines, specific platforms, or timing that cannot be inferred.
+Examples: "draft an email to the client", "follow up with Jana",
+"notify the team when this deploys", "schedule a code review"
 
-SOCIAL — navigating a relationship or interpersonal situation (conflict,
-feedback, a difficult conversation, collaboration friction)
+THINKING-A — comparing or deciding between specific options or approaches
+Examples: "should I refactor now or ship it", "choosing between two
+caching approaches", "weighing whether to use library X or Y"
 
-REFLECTION — retrospective rather than prospective (something that
-already happened that the participant is processing or wants to
-understand differently)
+THINKING-B — general problem-solving, being stuck, or reasoning through
+something open-ended
+Examples: "can't figure out what's wrong with this function",
+"trying to understand why this only breaks in production",
+"help me debug", "I want to see if this would work"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 2 — TYPE-SPECIFIC LOGIC
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOCIAL — navigating a relationship, collaboration friction, or
+interpersonal situation involving a colleague
+Examples: "give feedback on a junior dev's PR", "my manager keeps
+reassigning my tickets", "disagreement with a teammate about approach"
 
-If THINKING → choose the best fit from:
-- "What made this hard to think through on your own?"
-- "Were you looking for information, a sounding board, or something else?"
-- "What would a useful back-and-forth on this have looked like?"
-- "What would the ideal next step have been if I could have responded?"
+REFLECTION — retrospective, processing something that already happened
+Examples: "that retro went badly", "less productive this week and
+wondering why", "handled that incident well but want to capture what
+I'd do differently"
 
-If SOCIAL → choose the best fit from:
-- "What outcome were you hoping for in that situation?"
-- "Were you looking for advice, a way to prepare, or something else?"
-- "What made that difficult to navigate on your own?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — TYPE-SPECIFIC RESPONSE LOGIC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If REFLECTION → choose the best fit from:
-- "What would have helped you work through that differently?"
-- "What were you still unclear on when it came up?"
-- "Is this something that keeps coming up, or was it specific to today?"
+TASK-A
+Context check: if what they were doing, what they want handled, and
+whether others are involved are all clear or inferable → null
+If cut off or incoherent → "sorry, I didn't catch that — could you say that again?"
+If recurring or forgetting → null
+Otherwise → null (agent can infer what it needs)
 
-If TASK → apply priority rules below (first match wins)
+TASK-B
+Ask for the single most important missing piece needed to act:
+- Missing timing or frequency → "when would you want that, and how often?"
+- Missing person or recipient → "who would that go to?"
+- Missing platform or tool → "where would you want me to send that?"
+- Missing subject or content intent → "what's the main thing you want to get across?"
+- Multiple things missing → ask about the most critical one only;
+  prefer recipient > timing > platform > content
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 3 — TASK PRIORITY RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THINKING-A (comparing options)
+→ "do you want to talk through the tradeoffs or hear my take?"
 
-Apply in order. First match wins. Return only the question or null.
+THINKING-B (general / stuck)
+→ "should we work through it together or do you want me to take a look independently?"
+If emotional undertone present (frustration, stress) →
+→ "should we work through it step by step?"
 
-1. Cut-off or incoherent log →
-   "sorry, I didn't quite catch that — could you say that again?"
-   [does not count as a dynamic follow-up]
+SOCIAL
+Ask for the single most relevant missing piece:
+- If intent unclear → "what outcome were you hoping for?"
+- If relationship context unclear → "what's your relationship with this person like — are you peers, or is there a power dynamic?"
+- If content needed → "what's the main thing you want to get across?"
+- Default → "what outcome were you hoping for?"
 
-2. Reminder or notification without timing →
-   ask when and how often
+REFLECTION
+→ "what do you think might be behind it?"
+If the reflection is about a specific event →
+→ "what would you have done differently if you could?"
 
-3. Informational request without detail level →
-   ask quick summary or detailed overview
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — AFTER DYNAMIC FOLLOW-UP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-4. Contact without method →
-   ask how they'd want to reach out
+Re-evaluate full context including original log + response.
+If context is now sufficient → proceed to static follow-ups.
+If one critical piece still missing → ask one more dynamic follow-up.
+Never exceed 2 dynamic follow-ups total.
+Do not search for new gaps introduced by the response itself.
 
-5. Emotional expression or negative opinion →
-   brief acknowledgement + "what's making it difficult?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — STATIC FOLLOW-UPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-6. Noun-based log, usage or specifics unclear →
-   ask about usage, attributes, or what specifically they needed
+Always asked after dynamic follow-ups, in order:
 
-7. Verb-based log, scope or specifics missing →
-   ask about timing, tools, or degree
-
-8. Work context unclear AND agent could not infer it →
-   ask independent/collaborative/meeting context
-
-9. Recurring task or forgetting → null
-
-10. Agent could infer missing details from context → null
-
-11. Context check passes (what they were doing + what they wanted +
-    people involved all clear) → null
-
-12. Too short or vague →
-    "can you tell me a bit more about what you had in mind?"
-
-13. No call to action [FALLBACK] →
-    "how can I help with that?"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 4 — STATIC FOLLOW-UPS (always after dynamic)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-After 0–2 dynamic follow-ups, always ask the static follow-ups in order:
-
-For TASK logs:
-1. "Got it. How useful would it be for me to handle something like this,
-   and why?"
-2. "Are there any tools you would usually use for this?"
+TASK-A and TASK-B:
+1. "Got it. How useful would it be for me to handle something like this, and why?"
+2. "Are there any tools you'd normally use for this?"
 3. Confirmation: "Got it, I've noted that down."
 
-FOR THINKING logs:
-4. "How useful would it be to have someone to think this through with, and why?"
-5. "Is this the kind of thing you'd normally talk through with a colleague or teammate?"
-6. Confirmation: "Got it, I've noted that down."
+THINKING-A, THINKING-B, SOCIAL, REFLECTION:
+1. "Got it. How useful would it be for me to help with something like this, and why?"
+2. "If I could have responded in the moment — what would the most useful thing I could have said or done been?"
+3. Confirmation: "Got it, I've noted that down."
 
-For SOCIAL or REFLECTION logs:
-5. "Got it. How useful would it be for me to handle something like this,
-   and why?"
-6. "If I could have responded in the moment — what would the most useful
-   thing I could have said or done been?"
-7. Confirmation: "Got it, I've noted that down."
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HARD LIMITS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - Maximum 2 dynamic follow-ups per log
 - No yes/no questions
 - Maximum 15 words per question
-- Return only the question string or null
 - Never describe what you are doing — speak the question directly
-- Never use filler: "Great!", "Sure!", "Absolutely!"
-- After a dynamic follow-up is answered, re-evaluate full context
-  including original log + all responses together before asking another
+- Never use filler phrases: "Great!", "Sure!", "Of course!"
+- TASK-A logs should almost always return null on the dynamic follow-up — do not invent gaps
+- THINKING, SOCIAL, and REFLECTION logs should almost never return null — there is always an engagement mode worth clarifying
 
 Return ONLY a JSON object on a single line — nothing else:
-  {"dynamic_question": "<question or null>", "log_type": "<TASK|THINKING|SOCIAL|REFLECTION>"}
+  {"dynamic_question": "<question or null>", "log_type": "<TASK-A|TASK-B|THINKING-A|THINKING-B|SOCIAL|REFLECTION>"}
 
 - dynamic_question: a single question in natural spoken language (max 15 words), or the JSON null value (not the string "null")
 - log_type: the classification from STEP 1
@@ -261,7 +259,7 @@ async function generateDynamicFollowup(
   previousFollowup: string,
   previousResponse: string
 ): Promise<{ question: string | null; logType: LogType }> {
-  const fallback = { question: null, logType: "TASK" as LogType };
+  const fallback = { question: null, logType: "TASK-A" as LogType };
   if (!openai) return fallback;
   const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"`;
   try {
@@ -276,10 +274,10 @@ async function generateDynamicFollowup(
     });
     const raw = completion.choices[0]?.message?.content?.trim() || "{}";
     const parsed = JSON.parse(raw) as { dynamic_question?: string | null; log_type?: string };
-    const logType: LogType =
-      parsed.log_type === "THINKING" || parsed.log_type === "SOCIAL" || parsed.log_type === "REFLECTION"
-        ? parsed.log_type
-        : "TASK";
+    const validLogTypes: LogType[] = ["TASK-A", "TASK-B", "THINKING-A", "THINKING-B", "SOCIAL", "REFLECTION"];
+    const logType: LogType = validLogTypes.includes(parsed.log_type as LogType)
+      ? (parsed.log_type as LogType)
+      : "TASK-A";
     let question = parsed.dynamic_question ?? null;
     if (question) {
       // Ensure only one question — take everything up to and including the first "?"
@@ -803,7 +801,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
 
     ctx.logLastDynamicFollowup = "";
-    ctx.logLogType = "TASK";
+    ctx.logLogType = "TASK-A";
 
     const recordFilePath = ctx.currentRecordFilePath;
     const startTime = Date.now();
@@ -1161,7 +1159,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   eod_listening: (ctx: ChatFlowContext) => {
     ctx.answerId += 1;
-    ctx.logLogType = "TASK";
+    ctx.logLogType = "TASK-A";
     ctx.logLastDynamicFollowup = "";
     const recordFilePath = `${ctx.recordingsDir}/eod-${Date.now()}.${recordFileFormat}`;
     ctx.currentRecordFilePath = recordFilePath;
