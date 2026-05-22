@@ -562,6 +562,18 @@ def update_display_data(status=None, emoji=None, text=None,
     if last_log_at is not None:
         last_log_time = time.time()
         print(f"[IdleWatcher] Log saved — reset idle-waiting timer", flush=True)
+    # Image-based face transitions — handles flows where the status string is
+    # not a standard value (e.g. EOD uses "quick question" for all states).
+    # Node.js already calls setFace() correctly everywhere; we just mirror it here.
+    if image_path is not None and is_face_image(image_path):
+        img_base = os.path.basename(image_path)
+        if "answering" in img_base:
+            face_state = "speaking"
+        elif "listening" in img_base:
+            face_state = "listening"
+        elif "idle" in img_base and not button_is_down:
+            face_state = "idle"
+    # Status-based face transitions — primary path for main log/answer flows
     if status is not None and status.startswith("answering"):
         face_state = "speaking"
     elif status == "listening":
