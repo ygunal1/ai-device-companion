@@ -147,46 +147,58 @@ capturing lessons from an incident
 
 
 STEP 2 — DYNAMIC FOLLOW-UP DECISION
-FIRST: check if the log was cut off or is incoherent
+First: check if the log was cut off or is incoherent.
 If the log starts mid-sentence, ends abruptly, or cannot be interpreted
 as a complete thought → return:
-"sorry, I didn\'t catch that could you say that again?"
+"sorry, I didn\'t catch that — could you say that again?"
 This does not count as a dynamic follow-up.
 
-THEN: apply the two-rule decision:
+Then: apply the two-rule decision.
 
 RULE 1 — Return null if ALL of the following are true:
   - There is a clear call to action (the participant said what they
     want done)
   - No critical context is missing that the agent could not infer
     from the work environment
-  - Critical context includes: people or recipients involved,
-    specific deadlines or timing, external platforms or tools,
-    location or meeting context
-  - For THINKING, SOCIAL, and REFLECTION logs: there is enough
-    context to understand what the participant was grappling with
+  - Critical context differs by log type:
+      TASK: people or recipients involved, specific deadlines or
+        timing, external platforms or tools, location or meeting context
+      THINKING / SOCIAL / REFLECTION: what the participant was grappling
+        with, what kind of help or outcome they were looking for, who
+        else was involved if relevant
+  - Note: THINKING, SOCIAL, and REFLECTION logs should almost never
+    return null — there is almost always missing context about what the
+    participant was grappling with or what kind of help they wanted
 
-RULE 2 — If any critical context is missing or the call to action
-is unclear → return:
-"how would you want me to help with this?"
+RULE 2 — If any critical context is missing or the call to action is
+unclear → pick the most relevant option:
 
-IMPORTANT:
+1. Informational request without detail level → ask: quick summary or
+   detailed overview?
+2. Contact without method → ask how they’d want to reach out
+3. Emotional expression or negative opinion → brief acknowledgement +
+   "what’s making it difficult?"
+4. Noun-based log, usage or specifics unclear → ask about usage,
+   attributes, or what specifically they needed
+5. Verb-based log, scope or specifics missing → ask about timing,
+   tools, or degree
+6. Work context unclear AND agent could not infer it → ask
+   independent/collaborative/meeting context
+7. FALLBACK: "how would you want me to help with this?"
+
+Additional guidance:
 - TASK logs with inferable context should almost always return null
-- THINKING, SOCIAL, and REFLECTION logs should almost never
-  return null — there is almost always missing context about
-  what the participant was grappling with or what kind of help
-  they wanted
-- Maximum 2 dynamic follow-ups per log
-- After a follow-up is answered, re-evaluate the full context
-  including original log and all previous responses together
-  before asking another. Do not search for new gaps introduced
-  by the response itself.
-- When in doubt between asking and returning null → return null
-  for TASK logs; ask for THINKING, SOCIAL, and REFLECTION logs
+- Maximum 2 dynamic follow-ups per log entry
+- After a follow-up is answered, re-evaluate using the original log
+  plus all previous responses together before deciding whether a second
+  follow-up is needed. Do not ask about gaps that only appeared because
+  of what the participant said in their response — only ask if a gap
+  existed in the original log and remains unresolved.
+- When in doubt between asking and returning null → return null for
+  TASK; ask for THINKING, SOCIAL, and REFLECTION
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 STEP 3 — STATIC FOLLOW-UPS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 After 0–2 dynamic follow-ups, always deliver the static follow-ups
 in order based on log type:
@@ -201,9 +213,8 @@ If THINKING, SOCIAL, or REFLECTION:
 2. "What would you normally do about something like this?"
 3. Confirmation: "Got it, I\'ve noted that down."
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 HARD LIMITS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - Maximum 2 dynamic follow-ups per log entry
 - No yes/no questions
@@ -214,21 +225,27 @@ HARD LIMITS
   follow-up — nothing else
 - The classification must always be returned alongside the response
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 OUTPUT FORMAT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This JSON represents the full conversation sequence. Surface only the
+current turn to the participant — do not reveal upcoming questions.
+Deliver \`dynamic_followup\` first (if not null), then
+\`static_followup_1\`, then \`static_followup_2\`, then \`confirmation\`,
+one at a time across turns.
 
 Return your response in this format every time:
 
 {
   "log_type": "TASK" | "THINKING" | "SOCIAL" | "REFLECTION",
+  "current_turn": "dynamic_followup" | "static_followup_1" | "static_followup_2" | "confirmation",
   "dynamic_followup": "<question>" | null,
   "static_followup_1": "<question>",
   "static_followup_2": "<question>",
   "confirmation": "Got it, I\'ve noted that down."
 }
 
-Do not explain your reasoning. Do not return anything other than the JSON object.`;
+Do not explain your reasoning. Do not return anything other than the JSON object.`
 
 async function generateDynamicFollowup(
   transcript: string,
@@ -813,11 +830,30 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const question = ctx.pendingLogResponseText;
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: question });
-    onButtonPressed(noop);
-    onButtonReleased(noop);
+    let longPressTimer: NodeJS.Timeout | null = null;
+    onButtonPressed(() => {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_dynamic_followup_response") return;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("log_dynamic_followup_listening");
+      }, LONG_PRESS_MS);
+    });
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("sleep");
+      }
+    });
     void ctx.streamExternalReply(question);
     ctx.streamResponser.getPlayEndPromise().then(() => {
-      if (ctx.currentFlowName === "log_dynamic_followup_response") {
+      if (ctx.currentFlowName !== "log_dynamic_followup_response") return;
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (isButtonDown()) {
+        ctx.transitionTo("log_dynamic_followup_listening");
+      } else {
         ctx.transitionTo("log_dynamic_followup_wait");
       }
     });
@@ -880,14 +916,30 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
+    let longPressTimer: NodeJS.Timeout | null = null;
     onButtonPressed(() => {
-      ctx.streamResponser.stop();
-      ctx.transitionTo("log_followup_wait");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_response") return;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("log_followup_listening");
+      }, LONG_PRESS_MS);
     });
-    onButtonReleased(noop);
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("sleep");
+      }
+    });
     void ctx.streamExternalReply(followup1Text);
     ctx.streamResponser.getPlayEndPromise().then(() => {
-      if (ctx.currentFlowName === "log_response") {
+      if (ctx.currentFlowName !== "log_response") return;
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (isButtonDown()) {
+        ctx.transitionTo("log_followup_listening");
+      } else {
         ctx.transitionTo("log_followup_wait");
       }
     });
@@ -965,14 +1017,30 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     const followup2Text = ctx.pendingLogResponseText || FOLLOWUP_2[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup2Text });
+    let longPressTimer: NodeJS.Timeout | null = null;
     onButtonPressed(() => {
-      ctx.streamResponser.stop();
-      ctx.transitionTo("log_followup_2_wait");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_followup_response") return;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("log_followup_2_listening");
+      }, LONG_PRESS_MS);
     });
-    onButtonReleased(noop);
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        ctx.streamResponser.stop();
+        ctx.transitionTo("sleep");
+      }
+    });
     void ctx.streamExternalReply(followup2Text);
     ctx.streamResponser.getPlayEndPromise().then(() => {
-      if (ctx.currentFlowName === "log_followup_response") {
+      if (ctx.currentFlowName !== "log_followup_response") return;
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (isButtonDown()) {
+        ctx.transitionTo("log_followup_2_listening");
+      } else {
         ctx.transitionTo("log_followup_2_wait");
       }
     });
