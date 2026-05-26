@@ -443,7 +443,7 @@ Bad EOD follow-up examples (too therapeutic, too vague):
   }
 }
 
-const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
+const EOD_QUESTION = "Thinking about your day is there anything you wish you could have used me for that you haven't logged?";
 const EOD_FOLLOWUP_1 = "If this comes up again how useful would it be to have me help and why?";
 const EOD_FOLLOWUP_2 = "What was happening when you first realized you needed help with it?";
 const EOD_CONFIRMATION = "Got it, I've noted that down, and have a good evening.";

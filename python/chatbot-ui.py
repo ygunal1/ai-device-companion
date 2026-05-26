@@ -29,8 +29,9 @@ scroll_stop_event = threading.Event()
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 FACE_IDLE = os.path.join(_ASSETS_DIR, "idle_white.png")
 FACE_LISTENING = os.path.join(_ASSETS_DIR, "listening_white_4.png")
+FACE_BUFFERING = os.path.join(_ASSETS_DIR, "buffering_1.png")
 FACE_ANSWERING = os.path.join(_ASSETS_DIR, "answering_white_1.png")
-face_state = "idle"   # "idle" | "listening" | "speaking"
+face_state = "idle"   # "idle" | "listening" | "buffering" | "speaking"
 button_is_down = False  # tracks physical button state to guard stale idle transitions
 
 FACE_IDLE_WAITING = os.path.join(_ASSETS_DIR, "idle_waiting_2.png")
@@ -39,7 +40,7 @@ last_log_time = time.time()            # reset each time a log entry is saved
 _face_rgb565_cache: dict = {}  # keyed by (face_path, label, w, h)
 
 # Keep legacy helpers so nothing else breaks
-FACE_FILENAMES = {"idle_white.png", "listening_white_4.png", "answering_white_1.png", "idle_waiting_2.png"}
+FACE_FILENAMES = {"idle_white.png", "listening_white_4.png", "buffering_1.png", "answering.png", "answering_white_1.png", "idle_waiting_2.png"}
 _face_image_cache = {}
 
 def is_face_image(path):
@@ -139,6 +140,8 @@ class RenderThread(threading.Thread):
         # Always show face full-screen (idle=closed eyes, listening/speaking=open eyes)
         if face_state == "speaking":
             face_path = FACE_ANSWERING
+        elif face_state == "buffering":
+            face_path = FACE_BUFFERING
         elif face_state == "listening":
             face_path = FACE_LISTENING
         elif time.time() - last_log_time > IDLE_WAITING_THRESHOLD_S:
@@ -146,7 +149,7 @@ class RenderThread(threading.Thread):
         else:
             face_path = FACE_IDLE
         is_waiting = (face_state == "idle" and time.time() - last_log_time > IDLE_WAITING_THRESHOLD_S)
-        label_text = "waiting" if is_waiting else {"idle": "idle", "listening": "listening", "speaking": "answering"}.get(face_state, "idle")
+        label_text = "waiting" if is_waiting else {"idle": "idle", "listening": "listening", "buffering": "buffering", "speaking": "answering"}.get(face_state, "idle")
         cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
             try:
@@ -569,16 +572,19 @@ def update_display_data(status=None, emoji=None, text=None,
         img_base = os.path.basename(image_path)
         if "answering" in img_base:
             face_state = "speaking"
+        elif "buffering" in img_base:
+            face_state = "buffering"
         elif "listening" in img_base:
             face_state = "listening"
         elif "idle" in img_base and not button_is_down:
             face_state = "idle"
     # Status-based face transitions — primary path for main log/answer flows
-    if status is not None and status.startswith("answering"):
+    # Guard: don't override "buffering" on status alone; only setFace("answering") image clears it
+    if status is not None and status.startswith("answering") and face_state != "buffering":
         face_state = "speaking"
     elif status == "listening":
         face_state = "listening"
-    elif status == "idle" and face_state in ("speaking", "listening") and not button_is_down:
+    elif status == "idle" and face_state in ("speaking", "listening", "buffering") and not button_is_down:
         face_state = "idle"
     current_status = status if status is not None else current_status
     current_emoji = emoji if emoji is not None else current_emoji
