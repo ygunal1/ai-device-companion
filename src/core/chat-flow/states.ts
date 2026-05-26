@@ -372,7 +372,20 @@ async function generateDynamicFollowup(
 Previous follow-up asked (if any): "${previousFollowup}"
 Previous follow-up response (if any): "${previousResponse}"${
     isEod
-      ? `\nContext: This is an end-of-day reflection. The participant is describing something retrospectively. Even for TASK logs, ask what triggered the intention or when they first realized they needed help.`
+      ? `\nContext: This is an end-of-day reflection. The participant is describing something retrospectively — a moment earlier in the day where they wished they had used the device.
+
+For REFLECTION logs: ask what specifically happened or what made it difficult in the moment — not why they feel that way generally.
+For TASK logs: ask when the intention arose or what triggered it.
+
+Good EOD follow-up examples:
+- "what made it hard to ask for help with that at the time?"
+- "when did you first realize you needed help with it?"
+- "what were you trying to figure out when you got stuck?"
+
+Bad EOD follow-up examples (too therapeutic, too vague):
+- "what do you think's been driving that?"
+- "how did that make you feel?"
+- "what's making it difficult?"`
       : ""
   }`;
 
@@ -431,9 +444,9 @@ Previous follow-up response (if any): "${previousResponse}"${
 }
 
 const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
-const EOD_FOLLOWUP_1 = "How useful would it be for me to handle something like this and why?";
-const EOD_FOLLOWUP_2 = "What was happening when you first realized you needed help with this?";
-const EOD_CONFIRMATION = "Got it, I've noted that down. Have a good evening.";
+const EOD_FOLLOWUP_1 = "If this comes up again how useful would it be to have me help and why?";
+const EOD_FOLLOWUP_2 = "What was happening when you first realized you needed help with it?";
+const EOD_CONFIRMATION = "Got it, I've noted that down, and have a good evening.";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
   sleep: (ctx: ChatFlowContext) => {
@@ -883,7 +896,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       recordAudio(recordFilePath, ctx.wakeRecordMaxSec, level)
         .then(() => {
           if (ctx.currentFlowName !== "wake_log_listening") return;
-          setFace("answering");
+          setFace("buffering");
           display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
           ctx.transitionTo("log_processing");
         })
@@ -911,7 +924,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       onButtonReleased(noop);
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
@@ -941,6 +954,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     ctx.logLastDynamicFollowup = "";
     ctx.logLogType = "TASK";
+    ctx.logDynamicFollowupCount = 0;
 
     const recordFilePath = ctx.currentRecordFilePath;
     const startTime = Date.now();
@@ -958,6 +972,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (ctx.currentFlowName !== "log_processing") return;
         ctx.logLogType = logType;
         if (dynamicQuestion) {
+          ctx.logDynamicFollowupCount = 1;
           ctx.logLastDynamicFollowup = dynamicQuestion;
           ctx.pendingLogResponseText = dynamicQuestion;
           ctx.transitionTo("log_dynamic_followup_response");
@@ -976,6 +991,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_dynamic_followup_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
+    setFace("answering");
     const question = ctx.pendingLogResponseText;
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: question });
@@ -1052,7 +1068,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       onButtonReleased(noop);
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
@@ -1063,8 +1079,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
         const dynamicResponse = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: ctx.logLastDynamicFollowup });
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        // Attempt a second dynamic follow-up for non-TASK logs
-        if (ctx.logLogType !== "TASK") {
+        // Attempt a second dynamic follow-up (cap at 2 total)
+        if (ctx.logDynamicFollowupCount < 2) {
           const { question: secondQuestion } = await generateDynamicFollowup(
             ctx.logInitialTranscript,
             ctx.logLastDynamicFollowup,
@@ -1072,6 +1088,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
           );
           if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
           if (secondQuestion) {
+            ctx.logDynamicFollowupCount = 2;
             ctx.logLastDynamicFollowup = secondQuestion;
             ctx.pendingLogResponseText = secondQuestion;
             ctx.transitionTo("log_dynamic_followup_response");
@@ -1088,6 +1105,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
+    setFace("answering");
     const followup1Text = ctx.pendingLogResponseText || FOLLOWUP_1[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup1Text });
@@ -1174,7 +1192,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       onButtonReleased(noop);
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
@@ -1200,6 +1218,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_followup_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
+    setFace("answering");
     const followup2Text = ctx.pendingLogResponseText || FOLLOWUP_2[ctx.logLogType];
     ctx.pendingLogResponseText = "";
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: followup2Text });
@@ -1286,7 +1305,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonReleased(() => {
       onButtonReleased(noop);
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: "Processing..." });
     });
 
@@ -1311,6 +1330,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   log_confirmation: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
+    setFace("answering");
     ctx.pendingLogResponseText = "";
 
     display({ status: "answering...", emoji: "", RGB: "#00c8a3", text: LOG_CONFIRMATION });
@@ -1331,6 +1351,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
   // ── End-of-day interactive flow ──────────────────────────────────────────
   eod_prompt: (ctx: ChatFlowContext) => {
+    setFace("answering");
     display({
       status: "quick question",
       emoji: "",
@@ -1358,7 +1379,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     display({
-      status: "quick question",
+      status: "idle",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -1396,6 +1417,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     ctx.answerId += 1;
     ctx.logLogType = "TASK";
     ctx.logLastDynamicFollowup = "";
+    ctx.logDynamicFollowupCount = 0;
     const recordFilePath = `${ctx.recordingsDir}/eod-${Date.now()}.${recordFileFormat}`;
     ctx.currentRecordFilePath = recordFilePath;
 
@@ -1413,7 +1435,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
@@ -1444,6 +1466,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
   eod_dynamic_followup_response: (ctx: ChatFlowContext) => {
     ctx.streamResponser.stop();
+    setFace("answering");
     const question = ctx.pendingLogResponseText;
     ctx.pendingLogResponseText = "";
     display({ status: "quick question", emoji: "", RGB: "#ff9900", text: question });
@@ -1460,7 +1483,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   eod_dynamic_followup_wait: (ctx: ChatFlowContext) => {
     setFace("idle");
     onButtonDoubleClick(null);
-    display({ status: "quick question", emoji: "", RGB: "#331a00", text: "Hold to respond, or press briefly to skip.", rag_icon_visible: false });
+    display({ status: "idle", emoji: "", RGB: "#331a00", text: "Hold to respond, or press briefly to skip.", rag_icon_visible: false });
 
     let skipTimer: NodeJS.Timeout | null = null;
 
@@ -1507,7 +1530,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
@@ -1522,6 +1545,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_followup_1: (ctx: ChatFlowContext) => {
+    setFace("answering");
     display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_1 });
 
     onButtonPressed(() => {
@@ -1544,7 +1568,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     display({
-      status: "quick question",
+      status: "idle",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -1596,7 +1620,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
@@ -1611,11 +1635,12 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result.then(() => {
       if (ctx.currentFlowName !== "eod_followup_listening") return;
       saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
-      ctx.transitionTo("eod_followup_2");
+      ctx.transitionTo("eod_confirmation");
     }).catch(() => ctx.transitionTo("sleep"));
   },
 
   eod_followup_2: (ctx: ChatFlowContext) => {
+    setFace("answering");
     display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_FOLLOWUP_2 });
 
     onButtonPressed(() => {
@@ -1638,7 +1663,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     onButtonDoubleClick(null);
 
     display({
-      status: "quick question",
+      status: "idle",
       emoji: "",
       RGB: "#331a00",
       text: "Hold to respond, or press briefly to skip.",
@@ -1690,7 +1715,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
 
     onButtonReleased(() => {
       stop();
-      setFace("answering");
+      setFace("buffering");
       display({ status: "quick question", emoji: "", RGB: "#ff9900", text: "Processing..." });
     });
 
@@ -1710,6 +1735,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
   },
 
   eod_confirmation: (ctx: ChatFlowContext) => {
+    setFace("answering");
     display({ status: "quick question", emoji: "", RGB: "#ff9900", text: EOD_CONFIRMATION });
 
     onButtonPressed(() => {
