@@ -105,6 +105,8 @@ fi
 
 # Adjust initial volume (Linux only)
 if [ "$audio_supported" = true ]; then
+  # Restore full ALSA mixer state first (preserves all controls set by `sudo alsactl store`)
+  sudo alsactl restore 2>/dev/null || true
   amixer -c $card_index set Speaker $initial_volume_level
 fi
 
