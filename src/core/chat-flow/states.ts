@@ -137,6 +137,11 @@ THINKING — reasoning, deciding, or problem-solving
 Examples: comparing options, being stuck, working through a decision,
 preparing for a conversation, exploring whether something would work
 
+Note: THINKING logs where the decision content is vague (e.g. "X or Y",
+"what to do next", "whether to do something") ALWAYS require a follow-up
+asking what specifically the decision was about — even if the participant
+already stated how they want help.
+
 SOCIAL — navigating a relationship or interpersonal situation
 Examples: giving feedback, handling conflict, a difficult conversation,
 collaboration friction with a colleague
@@ -250,11 +255,13 @@ Do not explain your reasoning. Do not return anything other than the JSON object
 async function generateDynamicFollowup(
   transcript: string,
   previousFollowup: string,
-  previousResponse: string
+  previousResponse: string,
+  context?: string
 ): Promise<{ question: string | null; logType: LogType }> {
   const fallback = { question: null, logType: "TASK" as LogType };
   if (!openai) return fallback;
-  const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"`;
+  const contextLine = context ? `\n${context}` : "";
+  const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"${contextLine}`;
   try {
     const completion = await openai.chat.completions.create({
       model: openaiLLMModel,
@@ -262,7 +269,7 @@ async function generateDynamicFollowup(
         { role: "system", content: DYNAMIC_FOLLOWUP_SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
-      max_tokens: 100,
+      max_tokens: 300,
       temperature: 0.7,
     });
     const raw = completion.choices[0]?.message?.content?.trim() || "{}";
@@ -286,7 +293,7 @@ async function generateDynamicFollowup(
 
 const EOD_QUESTION = "Thinking about your day, is there anything you wish you could have used me for that you haven't logged?";
 const EOD_FOLLOWUP_1 = "How useful would it be for me to handle something like this and why?";
-const EOD_FOLLOWUP_2 = "Did you do anything about this when it came up today?";
+const EOD_FOLLOWUP_2 = "What was happening when you first realized you needed help with this?";
 const EOD_CONFIRMATION = "Got it, I've noted that down. Have a good evening.";
 
 export const flowStates: Record<FlowName, FlowStateHandler> = {
@@ -805,7 +812,10 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         display({ last_log_at: startTime });
         ctx.logInitialTranscript = transcript;
         console.log("[log_processing] transcript:", transcript);
-        const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "");
+        const { question: dynamicQuestion, logType } = await generateDynamicFollowup(
+        transcript, "", "",
+        "Context: This is an end-of-day reflection, not a live log. The participant is describing something retrospectively. Even for TASK logs, ask about when the intention arose or what triggered it."
+      );
         console.log("[log_processing] dynamicQuestion:", dynamicQuestion, "logType:", logType);
         if (ctx.currentFlowName !== "log_processing") return;
         ctx.logLogType = logType;
@@ -902,8 +912,23 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     result
       .then(async () => {
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
-        await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: ctx.logLastDynamicFollowup });
+        const dynamicResponse = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "followup", log_type: ctx.logLogType, question: ctx.logLastDynamicFollowup });
         if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+        // Attempt a second dynamic follow-up for non-TASK logs
+        if (ctx.logLogType !== "TASK") {
+          const { question: secondQuestion } = await generateDynamicFollowup(
+            ctx.logInitialTranscript,
+            ctx.logLastDynamicFollowup,
+            dynamicResponse
+          );
+          if (ctx.currentFlowName !== "log_dynamic_followup_listening") return;
+          if (secondQuestion) {
+            ctx.logLastDynamicFollowup = secondQuestion;
+            ctx.pendingLogResponseText = secondQuestion;
+            ctx.transitionTo("log_dynamic_followup_response");
+            return;
+          }
+        }
         ctx.pendingLogResponseText = FOLLOWUP_1_WITH_TRANSITION[ctx.logLogType];
         ctx.transitionTo("log_response");
       })
