@@ -69,16 +69,16 @@ const handleEmptyAudio = (ctx: ChatFlowContext, returnState: FlowName): void => 
 type LogType = "TASK" | "THINKING" | "SOCIAL" | "REFLECTION";
 
 const FOLLOWUP_1: Record<LogType, string> = {
-  TASK: "How useful would it be for me to take care of this for you, and why?",
-  THINKING: "How useful would it be for me to help with something like this, and why?",
-  SOCIAL: "How useful would it be for me to help with something like this, and why?",
-  REFLECTION: "How useful would it be for me to help with something like this, and why?",
+  TASK: "How useful would it be for me to take care of this for you and why?",
+  THINKING: "How useful would it be for me to help with something like this and why?",
+  SOCIAL: "How useful would it be for me to help with something like this and why?",
+  REFLECTION: "How useful would it be for me to help with something like this and why?",
 };
 const FOLLOWUP_1_WITH_TRANSITION: Record<LogType, string> = {
-  TASK: "Got it. How useful would it be for me to take care of this for you, and why?",
-  THINKING: "Got it. How useful would it be for me to help with something like this, and why?",
-  SOCIAL: "Got it. How useful would it be for me to help with something like this, and why?",
-  REFLECTION: "Got it. How useful would it be for me to help with something like this, and why?",
+  TASK: "Got it. How useful would it be for me to take care of this for you and why?",
+  THINKING: "Got it. How useful would it be for me to help with something like this and why?",
+  SOCIAL: "Got it. How useful would it be for me to help with something like this and why?",
+  REFLECTION: "Got it. How useful would it be for me to help with something like this and why?",
 };
 const FOLLOWUP_2: Record<LogType, string> = {
   TASK: "What tools do you normally use for this?",
@@ -125,121 +125,226 @@ them with during their workday.
 Your job has two parts: classify the log, then decide whether to ask a
 follow-up question or return null.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 1 — CLASSIFY THE LOG
-Classify into exactly one of the following types. Return this
-classification alongside your response.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Classify into exactly one of the following types.
 
 TASK — a concrete, delegatable request with a clear output
 Examples: reminders, summaries, drafts, notifications, searches,
-scheduling, debugging, code review, finding information
+scheduling, code review, finding information, taking notes
 
-THINKING — reasoning, deciding, or problem-solving
-Examples: comparing options, being stuck, working through a decision,
-preparing for a conversation, exploring whether something would work
-
-Note: THINKING logs where the decision content is vague (e.g. "X or Y",
-"what to do next", "whether to do something") ALWAYS require a follow-up
-asking what specifically the decision was about — even if the participant
-already stated how they want help.
+THINKING — reasoning, deciding, or problem-solving out loud
+Examples: comparing options ("X or Y"), being stuck, working through
+a decision, exploring tradeoffs, preparing for a conversation
+IMPORTANT: Any log containing "X or Y", "better", "should I",
+"which one", "what’s the difference", or similar comparative or
+decision language is ALWAYS classified as THINKING — never TASK.
 
 SOCIAL — navigating a relationship or interpersonal situation
 Examples: giving feedback, handling conflict, a difficult conversation,
-collaboration friction with a colleague
+collaboration friction, reviewing a colleague\’s work
 
 REFLECTION — retrospective, processing something that already happened
 Examples: a meeting that went badly, a week of low productivity,
-capturing lessons from an incident
+capturing lessons from an incident, wishing they had done something
+differently
 
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 2 — DYNAMIC FOLLOW-UP DECISION
-First: check if the log was cut off or is incoherent.
-If the log starts mid-sentence, ends abruptly, or cannot be interpreted
-as a complete thought → return:
-"sorry, I didn\'t catch that — could you say that again?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FIRST — check for incoherence or truncation:
+If the log starts mid-sentence, ends abruptly, is a single word or
+fragment, contains only filler ("You", "Thanks", "Okay"), or cannot
+be interpreted as a complete thought → return:
+"sorry, I didn\’t catch that — could you say that again?"
 This does not count as a dynamic follow-up.
 
-Then: apply the two-rule decision.
+SECOND — check for empty or nonsense responses:
+If previous_response is empty, clearly nonsense, or unrelated to the
+question asked → treat previous_response as if it was never given.
+Re-evaluate using only the original log and re-ask the most relevant
+follow-up question (may re-ask the same question).
 
-RULE 1 — Return null if ALL of the following are true:
-  - There is a clear call to action (the participant said what they
-    want done)
+THEN — apply the two-rule decision:
+
+RULE 1 — Return null only if ALL of the following are true:
+  - There is a clear call to action
   - No critical context is missing that the agent could not infer
-    from the work environment
-  - Critical context differs by log type:
+  - Critical context by log type:
       TASK: people or recipients involved, specific deadlines or
-        timing, external platforms or tools, location or meeting context
-      THINKING / SOCIAL / REFLECTION: what the participant was grappling
-        with, what kind of help or outcome they were looking for, who
-        else was involved if relevant
-  - Note: THINKING, SOCIAL, and REFLECTION logs should almost never
-    return null — there is almost always missing context about what the
-    participant was grappling with or what kind of help they wanted
+        timing, external platforms or tools, meeting context,
+        level of detail for informational or description requests
+      THINKING: what the decision is actually about (not just how
+        the participant wants help), what the options are, what
+        is making it difficult
+      SOCIAL: who is involved, what the situation is, what outcome
+        is needed
+      REFLECTION: what happened, what the participant is processing,
+        what kind of support they want
+  - THINKING, SOCIAL, and REFLECTION logs should almost never
+    return null — there is almost always missing context
 
-RULE 2 — If any critical context is missing or the call to action is
-unclear → pick the most relevant option:
+RULE 2 — Type-specific decision tree. Follow the branch for the log type.
+Do NOT skip to the fallback unless every branch for that type has been
+exhausted. The fallback must NEVER be reached for THINKING, SOCIAL, or
+REFLECTION — those types always have a relevant question to ask.
 
-1. Informational request without detail level → ask: quick summary or
-   detailed overview?
-2. Contact without method → ask how they’d want to reach out
-3. Emotional expression or negative opinion → brief acknowledgement +
-   "what’s making it difficult?"
-4. Noun-based log, usage or specifics unclear → ask about usage,
-   attributes, or what specifically they needed
-5. Verb-based log, scope or specifics missing → ask about timing,
-   tools, or degree
-6. Work context unclear AND agent could not infer it → ask
-   independent/collaborative/meeting context
-7. FALLBACK: "how would you want me to help with this?"
+THINKING logs:
+  a. No decision mentioned at all →
+       "what decision are you working through?"
+  b. Two options named but no driving context (e.g. "X or Y", "A or B",
+     "fork or clone", "which is better") →
+       "what\’s making the [option A] vs [option B] decision difficult?"
+     CRITICAL: ANY log with "X or Y", "A or B", "which", "better",
+     "should I", or two named options ALWAYS hits branch (b).
+     Never fall through to the fallback.
+  c. Decision described but consequences or stakes unclear →
+       "what\’s at stake with this one?"
+  d. Stuck or uncertain but no reason given →
+       "what\’s making this hard to figure out?"
 
-Additional guidance:
-- TASK logs with inferable context should almost always return null
+SOCIAL logs:
+  a. No person named → "who\’s involved in this situation?"
+  b. Person named but situation not described →
+       "what\’s been happening with [person]?"
+  c. Person + situation named but participant\’s goal is unclear →
+       "what outcome are you hoping for from this?"
+     CRITICAL: If a person and situation are BOTH present in the log,
+     you must use branch (c). Never fall through to the fallback.
+  d. Conflict with no prior attempts described →
+       "what have you already tried with this?"
+
+REFLECTION logs:
+  a. No event described → "what happened?"
+  b. Event described (even briefly) →
+       "what do you think\’s been driving that?"
+     CRITICAL: If the log describes ANY event or situation that already
+     happened, you must use branch (b). Never fall through to the fallback.
+  c. Event + possible cause described, but processing is unclear →
+       "what part of this are you most trying to work through?"
+
+TASK logs:
+  a. Missing recipient or target → ask who or what
+  b. Missing timing or deadline → ask when
+  c. Informational request without detail level →
+       "quick summary or a detailed overview?"
+  d. Missing platform or tool → ask where or how
+  e. Context fully inferable → return null
+
+FALLBACK (only if no type-specific branch above applies):
+  "how would you want me to help with this?"
+  IMPORTANT: This must never be returned for THINKING, SOCIAL, or
+  REFLECTION. If you are about to return the fallback for one of those
+  types, stop and re-read the type-specific branches above.
+
+Additional rules:
 - Maximum 2 dynamic follow-ups per log entry
-- After a follow-up is answered, re-evaluate using the original log
-  plus all previous responses together before deciding whether a second
-  follow-up is needed. Do not ask about gaps that only appeared because
-  of what the participant said in their response — only ask if a gap
-  existed in the original log and remains unresolved.
-- When in doubt between asking and returning null → return null for
-  TASK; ask for THINKING, SOCIAL, and REFLECTION
+- After a follow-up is answered with a valid response,
+  re-evaluate using the original log plus all previous responses
+  together. Only ask a second follow-up if a gap existed in the
+  original log and remains unresolved. Do not chase new gaps
+  introduced by the response itself.
+- When in doubt → return null for TASK; ask for THINKING,
+  SOCIAL, REFLECTION
 
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 3 — STATIC FOLLOW-UPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-After 0–2 dynamic follow-ups, always deliver the static follow-ups
-in order based on log type:
+After 0–2 dynamic follow-ups, always populate the static follow-ups:
 
 If TASK:
-1. "How useful would it be for me to take care of this for you, and why?"
-2. "What tools do you normally use for this?"
-3. Confirmation: "Got it, I\'ve noted that down."
+  static_followup_1: "How useful would it be for me to take care
+    of this for you, and why?"
+  static_followup_2: "What tools do you normally use for this?"
 
 If THINKING, SOCIAL, or REFLECTION:
-1. "How useful would it be for me to help with something like this, and why?"
-2. "What would you normally do about something like this?"
-3. Confirmation: "Got it, I\'ve noted that down."
+  static_followup_1: "How useful would it be for me to help with
+    something like this, and why?"
+  static_followup_2: "What would you normally do about something
+    like this?"
 
+confirmation (all types): "Got it, I\’ve noted that down."
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Example 1 — THINKING (branch b):
+  Log: "Should I do X or Y?"
+  → log_type: THINKING
+  → dynamic_followup: "what\'s making the X vs Y decision difficult?"
+
+Example 2 — THINKING (branch b):
+  Log: "Help me decide whether to use approach A or approach B."
+  → log_type: THINKING
+  → dynamic_followup: "what\'s making the approach A vs approach B decision difficult?"
+
+Example 3 — TASK (branch c, informational):
+  Log: "What is the order of operations for deploying code to AWS?"
+  → log_type: TASK
+  → dynamic_followup: "quick summary or a detailed overview?"
+
+Example 4 — TASK (branch c, informational):
+  Log: "Describe to me what function ABC does."
+  → log_type: TASK
+  → dynamic_followup: "quick summary or a detailed overview?"
+
+Example 5 — REFLECTION (branch b):
+  Log: "I have been less productive this week than usual and I\'m not sure why."
+  → log_type: REFLECTION
+  → dynamic_followup: "what do you think\'s been driving that?"
+
+Example 6 — TASK (null, context fully inferable):
+  Log: "Remind me to ping my teammate at 2 PM."
+  → log_type: TASK
+  → dynamic_followup: null
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SELF-CHECK (required before writing JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before writing your JSON output, verify your chosen dynamic_followup:
+
+1. If log_type is THINKING and dynamic_followup is "how would you
+   want me to help with this?" → ERROR. This fallback is forbidden
+   for THINKING. Replace it with the correct branch question.
+   If you are unsure which branch applies, default to:
+   "what decision are you working through?"
+
+2. If log_type is SOCIAL and dynamic_followup is "how would you
+   want me to help with this?" → ERROR. This fallback is forbidden
+   for SOCIAL. Replace it with the correct branch question.
+   If you are unsure which branch applies, default to:
+   "who\'s involved in this situation?"
+
+3. If log_type is REFLECTION and dynamic_followup is "how would you
+   want me to help with this?" → ERROR. This fallback is forbidden
+   for REFLECTION. Replace it with the correct branch question.
+   If you are unsure which branch applies, default to:
+   "what happened?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HARD LIMITS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- Maximum 2 dynamic follow-ups per log entry
 - No yes/no questions
 - Maximum 15 words per dynamic follow-up question
 - Never describe what you are doing — speak the question directly
 - Never use filler: "Great!", "Sure!", "Absolutely!", "Of course!"
-- Return only the question string or null for the dynamic
-  follow-up — nothing else
-- The classification must always be returned alongside the response
+- Return only the question string or null for dynamic_followup
+- Always return valid JSON — no explanation, no markdown, no prose
 
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-This JSON represents the full conversation sequence. Surface only the
-current turn to the participant — do not reveal upcoming questions.
-Deliver \`dynamic_followup\` first (if not null), then
-\`static_followup_1\`, then \`static_followup_2\`, then \`confirmation\`,
-one at a time across turns.
-
-Return your response in this format every time:
+Return this JSON object and nothing else. No markdown, no backticks,
+no explanation before or after.
 
 {
   "log_type": "TASK" | "THINKING" | "SOCIAL" | "REFLECTION",
@@ -247,21 +352,30 @@ Return your response in this format every time:
   "dynamic_followup": "<question>" | null,
   "static_followup_1": "<question>",
   "static_followup_2": "<question>",
-  "confirmation": "Got it, I\'ve noted that down."
+  "confirmation": "Got it, I\’ve noted that down."
 }
 
-Do not explain your reasoning. Do not return anything other than the JSON object.`
+current_turn must reflect which question should be delivered now:
+- If dynamic_followup is not null → current_turn is "dynamic_followup"
+- If dynamic_followup is null → current_turn is "static_followup_1"`
 
 async function generateDynamicFollowup(
   transcript: string,
   previousFollowup: string,
   previousResponse: string,
-  context?: string
+  isEod: boolean = false
 ): Promise<{ question: string | null; logType: LogType }> {
   const fallback = { question: null, logType: "TASK" as LogType };
   if (!openai) return fallback;
-  const contextLine = context ? `\n${context}` : "";
-  const userContent = `Current log: "${transcript}"\nPrevious follow-up asked (if any): "${previousFollowup}"\nPrevious follow-up response (if any): "${previousResponse}"${contextLine}`;
+
+  const userContent = `Current log: "${transcript}"
+Previous follow-up asked (if any): "${previousFollowup}"
+Previous follow-up response (if any): "${previousResponse}"${
+    isEod
+      ? `\nContext: This is an end-of-day reflection. The participant is describing something retrospectively. Even for TASK logs, ask what triggered the intention or when they first realized they needed help.`
+      : ""
+  }`;
+
   try {
     const completion = await openai.chat.completions.create({
       model: openaiLLMModel,
@@ -270,20 +384,45 @@ async function generateDynamicFollowup(
         { role: "user", content: userContent },
       ],
       max_tokens: 300,
-      temperature: 0.7,
+      temperature: 0.3,
     });
+
     const raw = completion.choices[0]?.message?.content?.trim() || "{}";
-    const parsed = JSON.parse(raw) as { dynamic_followup?: string | null; log_type?: string };
+
+    // Strip markdown code fences if model wraps response anyway
+    const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+
+    const parsed = JSON.parse(cleaned) as {
+      dynamic_followup?: string | null;
+      log_type?: string;
+    };
+
     const validLogTypes: LogType[] = ["TASK", "THINKING", "SOCIAL", "REFLECTION"];
     const logType: LogType = validLogTypes.includes(parsed.log_type as LogType)
       ? (parsed.log_type as LogType)
       : "TASK";
+
     let question = parsed.dynamic_followup ?? null;
     if (question) {
       // Ensure only one question — take everything up to and including the first "?"
       const firstQ = question.indexOf("?");
       if (firstQ !== -1) question = question.slice(0, firstQ + 1).trim();
     }
+
+    // Guard: if the LLM returned the fallback for a type where it's forbidden,
+    // replace with the appropriate default so we always get useful context.
+    const FALLBACK_STRING = "how would you want me to help with this?";
+    if (question?.toLowerCase().includes(FALLBACK_STRING) && logType !== "TASK") {
+      console.warn(`[DynamicFollowup] Fallback returned for ${logType} type — overriding`);
+      const defaults: Record<LogType, string> = {
+        TASK: question,
+        THINKING: "what decision are you working through?",
+        SOCIAL: "who's involved in this situation?",
+        REFLECTION: "what happened?",
+      };
+      question = defaults[logType];
+    }
+
     return { question: question || null, logType };
   } catch (err) {
     console.error("[DynamicFollowup] LLM call failed:", err);
@@ -813,9 +952,8 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         ctx.logInitialTranscript = transcript;
         console.log("[log_processing] transcript:", transcript);
         const { question: dynamicQuestion, logType } = await generateDynamicFollowup(
-        transcript, "", "",
-        "Context: This is an end-of-day reflection, not a live log. The participant is describing something retrospectively. Even for TASK logs, ask about when the intention arose or what triggered it."
-      );
+          transcript, "", ""
+        );
         console.log("[log_processing] dynamicQuestion:", dynamicQuestion, "logType:", logType);
         if (ctx.currentFlowName !== "log_processing") return;
         ctx.logLogType = logType;
@@ -855,7 +993,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         clearTimeout(longPressTimer);
         longPressTimer = null;
         ctx.streamResponser.stop();
-        ctx.transitionTo("sleep");
+        ctx.transitionTo("log_confirmation");
       }
     });
     void ctx.streamExternalReply(question);
@@ -873,10 +1011,21 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
     setFace("idle");
     onButtonDoubleClick(null);
     display({ status: "idle", emoji: "", RGB: "#000033", text: "Hold to answer...", rag_icon_visible: false });
+    let longPressTimer: NodeJS.Timeout | null = null;
     onButtonPressed(() => {
-      ctx.transitionTo("log_dynamic_followup_listening");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_dynamic_followup_wait") return;
+        ctx.transitionTo("log_dynamic_followup_listening");
+      }, LONG_PRESS_MS);
     });
-    onButtonReleased(noop);
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      ctx.transitionTo("log_confirmation");
+    });
     setTimeout(() => {
       if (ctx.currentFlowName === "log_dynamic_followup_wait") {
         ctx.transitionTo("sleep");
@@ -956,7 +1105,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         clearTimeout(longPressTimer);
         longPressTimer = null;
         ctx.streamResponser.stop();
-        ctx.transitionTo("sleep");
+        ctx.transitionTo("log_confirmation");
       }
     });
     void ctx.streamExternalReply(followup1Text);
@@ -982,11 +1131,22 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
     });
 
+    let longPressTimer: NodeJS.Timeout | null = null;
     onButtonPressed(() => {
-      ctx.transitionTo("log_followup_listening");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_followup_wait") return;
+        ctx.transitionTo("log_followup_listening");
+      }, LONG_PRESS_MS);
     });
 
-    onButtonReleased(noop);
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      ctx.transitionTo("log_confirmation");
+    });
 
     setTimeout(() => {
       if (ctx.currentFlowName === "log_followup_wait") {
@@ -1057,7 +1217,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
         clearTimeout(longPressTimer);
         longPressTimer = null;
         ctx.streamResponser.stop();
-        ctx.transitionTo("sleep");
+        ctx.transitionTo("log_confirmation");
       }
     });
     void ctx.streamExternalReply(followup2Text);
@@ -1083,11 +1243,22 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       rag_icon_visible: false,
     });
 
+    let longPressTimer: NodeJS.Timeout | null = null;
     onButtonPressed(() => {
-      ctx.transitionTo("log_followup_2_listening");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (ctx.currentFlowName !== "log_followup_2_wait") return;
+        ctx.transitionTo("log_followup_2_listening");
+      }, LONG_PRESS_MS);
     });
 
-    onButtonReleased(noop);
+    onButtonReleased(() => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      ctx.transitionTo("log_confirmation");
+    });
 
     setTimeout(() => {
       if (ctx.currentFlowName === "log_followup_2_wait") {
@@ -1258,7 +1429,7 @@ export const flowStates: Record<FlowName, FlowStateHandler> = {
       if (ctx.currentFlowName !== "eod_listening") return;
       const transcript = await saveLogEntry({ audioPath: recordFilePath, timestamp: Date.now(), type: "eod" });
       if (ctx.currentFlowName !== "eod_listening") return;
-      const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "");
+      const { question: dynamicQuestion, logType } = await generateDynamicFollowup(transcript, "", "", true);
       if (ctx.currentFlowName !== "eod_listening") return;
       ctx.logLogType = logType;
       if (dynamicQuestion) {
