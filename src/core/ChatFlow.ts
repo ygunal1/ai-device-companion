@@ -60,6 +60,7 @@ class ChatFlow implements ChatFlowContext {
   logInitialTranscript: string = "";
   logLastDynamicFollowup: string = "";
   logLogType: "TASK" | "THINKING" | "SOCIAL" | "REFLECTION" = "TASK";
+  logDynamicFollowupCount: number = 0;
   constructor(options: { enableCamera?: boolean } = {}) {
     console.log(`[${getCurrentTimeTag()}] ChatBot started.`);
     this.recordingsDir = recordingsDir;

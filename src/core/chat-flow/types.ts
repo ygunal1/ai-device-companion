@@ -70,6 +70,7 @@ export interface ChatFlowContext {
   logInitialTranscript: string;
   logLastDynamicFollowup: string;
   logLogType: "TASK" | "THINKING" | "SOCIAL" | "REFLECTION";
+  logDynamicFollowupCount: number;
   transitionTo: (flowName: FlowName) => void;
   recognizeAudio: (path: string, isFromAutoListening?: boolean) => Promise<string>;
   partialThinkingCallback: (partialThinking: string) => void;

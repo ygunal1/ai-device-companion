@@ -7,9 +7,10 @@ import { webAudioBridge } from "./web-audio-bridge";
 import dotEnv from "dotenv";
 
 const FACES = {
-  idle:      resolve(__dirname, "../../assets/idle.png"),
-  listening: resolve(__dirname, "../../assets/listening.png"),
-  answering: resolve(__dirname, "../../assets/answering.png"),
+  idle:       resolve(__dirname, "../../assets/idle.png"),
+  listening:  resolve(__dirname, "../../assets/listening.png"),
+  buffering:  resolve(__dirname, "../../assets/buffering_1.png"),
+  answering:  resolve(__dirname, "../../assets/answering.png"),
 } as const;
 
 type FaceState = keyof typeof FACES;
