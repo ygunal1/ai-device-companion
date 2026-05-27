@@ -149,7 +149,7 @@ class RenderThread(threading.Thread):
         else:
             face_path = FACE_IDLE
         is_waiting = (face_state == "idle" and time.time() - last_log_time > IDLE_WAITING_THRESHOLD_S)
-        label_text = "waiting" if is_waiting else {"idle": "idle", "listening": "listening", "buffering": "buffering", "speaking": "answering"}.get(face_state, "idle")
+        label_text = "waiting" if is_waiting else {"idle": "idle", "listening": "listening", "buffering": "one second...", "speaking": "answering"}.get(face_state, "idle")
         cache_key = (face_path, label_text, self.whisplay.LCD_WIDTH, self.whisplay.LCD_HEIGHT)
         if cache_key not in _face_rgb565_cache:
             try:
